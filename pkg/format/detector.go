@@ -67,8 +67,8 @@ func (d *Detector) DetectFile(filename string) (Format, error) {
 
 	// Prioritize magic bytes over extension
 	if formatByMagic != FormatUnknown {
-		// Disambiguate ZIP-based formats
-		if formatByMagic == FormatEPUB {
+		// Disambiguate ZIP-based formats (EPUB, DOCX both use PK magic bytes)
+		if formatByMagic == FormatEPUB || formatByMagic == FormatDOCX {
 			return d.disambiguateZipFormat(filename, ext)
 		}
 		return formatByMagic, nil

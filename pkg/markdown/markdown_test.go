@@ -386,3 +386,247 @@ func BenchmarkInlineFormatting(b *testing.B) {
 		translator.translateInlineFormatting(input)
 	}
 }
+
+// Test EPUB to Markdown Cover Preservation
+func TestEPUBToMarkdownCoverPreservation(t *testing.T) {
+	// Create temp directory
+	tmpDir := t.TempDir()
+
+	// Create test EPUB with cover
+	epubPath := tmpDir + "/test.epub"
+	mdPath := tmpDir + "/test.md"
+
+	// Create book with cover
+	book := &ebook.Book{
+		Metadata: ebook.Metadata{
+			Title:   "Test Book",
+			Authors: []string{"Test Author"},
+			Cover:   []byte{0xFF, 0xD8, 0xFF, 0xE0}, // JPEG header
+		},
+		Chapters: []ebook.Chapter{
+			{
+				Title: "Chapter 1",
+				Sections: []ebook.Section{
+					{Content: "Test content"},
+				},
+			},
+		},
+	}
+
+	// Write EPUB
+	writer := ebook.NewEPUBWriter()
+	if err := writer.Write(book, epubPath); err != nil {
+		t.Fatalf("Failed to write EPUB: %v", err)
+	}
+
+	// Convert to markdown
+	converter := NewEPUBToMarkdownConverter(false, "")
+	if err := converter.ConvertEPUBToMarkdown(epubPath, mdPath); err != nil {
+		t.Fatalf("Failed to convert EPUB to Markdown: %v", err)
+	}
+
+	// Verify Images directory was created
+	imagesDir := tmpDir + "/Images"
+	if _, err := os.Stat(imagesDir); os.IsNotExist(err) {
+		t.Error("Images directory was not created")
+	}
+
+	// Verify cover was extracted
+	coverPath := imagesDir + "/cover.jpg"
+	coverData, err := os.ReadFile(coverPath)
+	if err != nil {
+		t.Errorf("Cover file not found: %v", err)
+	}
+	if len(coverData) != 4 {
+		t.Errorf("Cover size mismatch: got %d, want 4", len(coverData))
+	}
+
+	// Verify markdown references cover
+	mdContent, err := os.ReadFile(mdPath)
+	if err != nil {
+		t.Fatalf("Failed to read markdown: %v", err)
+	}
+	mdStr := string(mdContent)
+	if !strings.Contains(mdStr, "cover: Images/cover.jpg") {
+		t.Error("Markdown does not reference cover in frontmatter")
+	}
+}
+
+// Test Markdown to EPUB Cover Loading
+func TestMarkdownToEPUBCoverLoading(t *testing.T) {
+	// Create temp directory
+	tmpDir := t.TempDir()
+
+	// Create Images directory
+	imagesDir := tmpDir + "/Images"
+	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+		t.Fatalf("Failed to create Images dir: %v", err)
+	}
+
+	// Write cover file
+	coverData := []byte{0xFF, 0xD8, 0xFF, 0xE0}
+	coverPath := imagesDir + "/cover.jpg"
+	if err := os.WriteFile(coverPath, coverData, 0644); err != nil {
+		t.Fatalf("Failed to write cover: %v", err)
+	}
+
+	// Create markdown file with cover reference
+	mdPath := tmpDir + "/test.md"
+	mdContent := `---
+title: Test Book
+authors: Test Author
+cover: Images/cover.jpg
+---
+
+# Chapter 1
+
+Test content
+`
+	if err := os.WriteFile(mdPath, []byte(mdContent), 0644); err != nil {
+		t.Fatalf("Failed to write markdown: %v", err)
+	}
+
+	// Convert to EPUB
+	epubPath := tmpDir + "/output.epub"
+	converter := NewMarkdownToEPUBConverter()
+	if err := converter.ConvertMarkdownToEPUB(mdPath, epubPath); err != nil {
+		t.Fatalf("Failed to convert Markdown to EPUB: %v", err)
+	}
+
+	// Parse EPUB and verify cover
+	parser := ebook.NewUniversalParser()
+	book, err := parser.Parse(epubPath)
+	if err != nil {
+		t.Fatalf("Failed to parse output EPUB: %v", err)
+	}
+
+	if len(book.Metadata.Cover) != 4 {
+		t.Errorf("Cover size mismatch: got %d, want 4", len(book.Metadata.Cover))
+	}
+}
+
+// Test Complete Round-Trip Preservation
+func TestRoundTripPreservation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Original data
+	originalBook := &ebook.Book{
+		Metadata: ebook.Metadata{
+			Title:       "Test Book",
+			Authors:     []string{"Author One", "Author Two"},
+			Description: "Test description",
+			Publisher:   "Test Publisher",
+			Language:    "en",
+			ISBN:        "978-1-234-56789-0",
+			Date:        "2025-11-21",
+			Cover:       []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x12, 0x34},
+		},
+		Chapters: []ebook.Chapter{
+			{
+				Title: "Chapter One",
+				Sections: []ebook.Section{
+					{Content: "First chapter content"},
+				},
+			},
+			{
+				Title: "Chapter Two",
+				Sections: []ebook.Section{
+					{Content: "Second chapter content"},
+				},
+			},
+		},
+	}
+
+	// Step 1: Create source EPUB
+	sourceEPUB := tmpDir + "/source.epub"
+	writer := ebook.NewEPUBWriter()
+	if err := writer.Write(originalBook, sourceEPUB); err != nil {
+		t.Fatalf("Failed to write source EPUB: %v", err)
+	}
+
+	// Step 2: Convert to Markdown
+	mdPath := tmpDir + "/intermediate.md"
+	epubToMd := NewEPUBToMarkdownConverter(false, "")
+	if err := epubToMd.ConvertEPUBToMarkdown(sourceEPUB, mdPath); err != nil {
+		t.Fatalf("Failed to convert EPUB to Markdown: %v", err)
+	}
+
+	// Step 3: Convert back to EPUB
+	outputEPUB := tmpDir + "/output.epub"
+	mdToEpub := NewMarkdownToEPUBConverter()
+	if err := mdToEpub.ConvertMarkdownToEPUB(mdPath, outputEPUB); err != nil {
+		t.Fatalf("Failed to convert Markdown to EPUB: %v", err)
+	}
+
+	// Step 4: Verify output
+	parser := ebook.NewUniversalParser()
+	resultBook, err := parser.Parse(outputEPUB)
+	if err != nil {
+		t.Fatalf("Failed to parse output EPUB: %v", err)
+	}
+
+	// Verify metadata
+	if resultBook.Metadata.Title != originalBook.Metadata.Title {
+		t.Errorf("Title mismatch: got %q, want %q", resultBook.Metadata.Title, originalBook.Metadata.Title)
+	}
+	if len(resultBook.Metadata.Authors) != len(originalBook.Metadata.Authors) {
+		t.Errorf("Authors count mismatch: got %d, want %d", len(resultBook.Metadata.Authors), len(originalBook.Metadata.Authors))
+	}
+	if resultBook.Metadata.Description != originalBook.Metadata.Description {
+		t.Errorf("Description mismatch")
+	}
+	if resultBook.Metadata.Publisher != originalBook.Metadata.Publisher {
+		t.Errorf("Publisher mismatch: got %q, want %q", resultBook.Metadata.Publisher, originalBook.Metadata.Publisher)
+	}
+	if resultBook.Metadata.ISBN != originalBook.Metadata.ISBN {
+		t.Errorf("ISBN mismatch: got %q, want %q", resultBook.Metadata.ISBN, originalBook.Metadata.ISBN)
+	}
+
+	// Verify cover
+	if len(resultBook.Metadata.Cover) != len(originalBook.Metadata.Cover) {
+		t.Errorf("Cover size mismatch: got %d, want %d", len(resultBook.Metadata.Cover), len(originalBook.Metadata.Cover))
+	}
+
+	// Verify chapters
+	if len(resultBook.Chapters) != len(originalBook.Chapters) {
+		t.Errorf("Chapter count mismatch: got %d, want %d", len(resultBook.Chapters), len(originalBook.Chapters))
+	}
+}
+
+// Test Image Directory Creation
+func TestImageDirectoryCreation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create minimal EPUB
+	book := &ebook.Book{
+		Metadata: ebook.Metadata{
+			Title: "Test",
+		},
+		Chapters: []ebook.Chapter{
+			{
+				Title: "Ch1",
+				Sections: []ebook.Section{
+					{Content: "Content"},
+				},
+			},
+		},
+	}
+
+	epubPath := tmpDir + "/test.epub"
+	writer := ebook.NewEPUBWriter()
+	if err := writer.Write(book, epubPath); err != nil {
+		t.Fatalf("Failed to write EPUB: %v", err)
+	}
+
+	mdPath := tmpDir + "/test.md"
+	converter := NewEPUBToMarkdownConverter(false, "")
+	if err := converter.ConvertEPUBToMarkdown(epubPath, mdPath); err != nil {
+		t.Fatalf("Conversion failed: %v", err)
+	}
+
+	// Verify Images directory exists
+	imagesDir := tmpDir + "/Images"
+	if _, err := os.Stat(imagesDir); os.IsNotExist(err) {
+		t.Error("Images directory was not created")
+	}
+}

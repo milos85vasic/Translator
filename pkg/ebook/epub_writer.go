@@ -125,11 +125,6 @@ func (w *EPUBWriter) writeContentOPF(zw *zip.Writer, book *Book) error {
 	// Add NCX to manifest
 	manifest.WriteString(`    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>` + "\n")
 
-	authors := "Unknown"
-	if len(book.Metadata.Authors) > 0 {
-		authors = strings.Join(book.Metadata.Authors, ", ")
-	}
-
 	language := book.Metadata.Language
 	if language == "" {
 		language = "en"
@@ -150,7 +145,15 @@ func (w *EPUBWriter) writeContentOPF(zw *zip.Writer, book *Book) error {
 	// Build metadata section
 	var metadataSection strings.Builder
 	metadataSection.WriteString(fmt.Sprintf("    <dc:title>%s</dc:title>\n", escapeXML(book.Metadata.Title)))
-	metadataSection.WriteString(fmt.Sprintf("    <dc:creator>%s</dc:creator>\n", escapeXML(authors)))
+
+	// Write each author as a separate dc:creator element
+	if len(book.Metadata.Authors) > 0 {
+		for _, author := range book.Metadata.Authors {
+			metadataSection.WriteString(fmt.Sprintf("    <dc:creator>%s</dc:creator>\n", escapeXML(author)))
+		}
+	} else {
+		metadataSection.WriteString("    <dc:creator>Unknown</dc:creator>\n")
+	}
 	metadataSection.WriteString(fmt.Sprintf("    <dc:language>%s</dc:language>\n", language))
 	metadataSection.WriteString(fmt.Sprintf("    <dc:identifier id=\"BookID\">%s</dc:identifier>\n", escapeXML(identifier)))
 	metadataSection.WriteString(fmt.Sprintf("    <dc:date>%s</dc:date>\n", date))

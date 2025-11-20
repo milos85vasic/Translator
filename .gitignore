@@ -20,6 +20,10 @@ __pycache__/
 translation_list.txt
 translationlist.txt
 
+# Configuration with API keys
+config_with_keys.json
+api_keys.json
+
 # Logs and cache
 *.log
 *.cache

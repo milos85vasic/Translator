@@ -122,6 +122,9 @@ make generate-certs
 - **[Architecture](Documentation/ARCHITECTURE.md)** - System design
 - **[Language Support](Documentation/LANGUAGES.md)** - Supported languages
 - **[Format Support](Documentation/FORMATS.md)** - Ebook formats
+- **[Retry Mechanism](Documentation/RETRY_MECHANISM.md)** - Automatic text splitting & retry
+- **[Verification System](Documentation/VERIFICATION_SYSTEM.md)** - Multi-LLM quality verification & polishing
+- **[Multi-Pass Polishing](Documentation/MULTIPASS_POLISHING.md)** - Iterative refinement with note-taking & database
 
 ## 🌍 Supported Languages
 

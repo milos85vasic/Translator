@@ -410,7 +410,7 @@ Add OpenAI/Anthropic for optimal configuration:
 ```bash
 export OPENAI_API_KEY="your-openai-key"
 export ANTHROPIC_API_KEY="your-anthropic-key"
-export DEEPSEEK_API_KEY="REDACTED_DEEPSEEK_KEY"
+export DEEPSEEK_API_KEY="your-deepseek-key"
 
 ./build/translator -input book.epub -provider multi-llm -locale sr
 ```

@@ -11,7 +11,10 @@ echo ""
 
 # Test 2: Translation to TXT (simpler than EPUB)
 echo "Test 2: Translation to TXT format (first chapter)"
-export DEEPSEEK_API_KEY="REDACTED_DEEPSEEK_KEY"
+if [ -z "$DEEPSEEK_API_KEY" ]; then
+  echo "ERROR: DEEPSEEK_API_KEY must be set"
+  exit 1
+fi
 timeout 120 ./build/translator \
   -input Books/Stepanova_T._Detektivtriller1._Son_Nad_Bezdnoyi.epub \
   -locale sr \

@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Test Zhipu AI with direct API call to bypass any issues"""
 
+import os
 import openai
 
 def test_zhipu_direct():
-    api_key = "[REDACTED-API-KEY]"
+    api_key = os.environ.get("ZHIPU_API_KEY")
+    
+    if not api_key:
+        print("❌ ZHIPU_API_KEY environment variable not set")
+        return False
     
     try:
         client = openai.OpenAI(

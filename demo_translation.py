@@ -22,7 +22,7 @@ def demo_translation():
     print("=" * 60)
     
     # Test Zhipu AI if API key is available
-    zhipu_key = "[REDACTED-API-KEY].lnHprFLE4TikOOjX"
+    zhipu_key = os.environ.get("ZHIPU_API_KEY")
     if zhipu_key:
         print("\n🚀 TESTING ZHIPU AI TRANSLATION (cutting edge):")
         print("-" * 50)
@@ -74,7 +74,7 @@ def demo_translation():
             print(f"❌ Zhipu AI translation failed: {e}")
     
     # Test DeepSeek if API key is available
-    deepseek_key = "[REDACTED-API-KEY]"
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
     if deepseek_key:
         print("\n🚀 TESTING DEEPSEEK TRANSLATION (powerful, cost-effective):")
         print("-" * 50)

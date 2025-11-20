@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"digital.vasic.translator/pkg/coordination"
+	"digital.vasic.translator/pkg/ebook"
 	"digital.vasic.translator/pkg/events"
-	"digital.vasic.translator/pkg/fb2"
+	"digital.vasic.translator/pkg/format"
+	"digital.vasic.translator/pkg/language"
 	"digital.vasic.translator/pkg/script"
 	"digital.vasic.translator/pkg/translator"
 	"digital.vasic.translator/pkg/translator/dictionary"
@@ -15,33 +18,44 @@ import (
 	"strings"
 )
 
-const version = "1.0.0"
+const version = "2.0.0"
 
 func main() {
 	// Define CLI flags
 	var (
-		inputFile    string
-		outputFile   string
-		provider     string
-		model        string
-		apiKey       string
-		baseURL      string
-		scriptType   string
-		showVersion  bool
-		showHelp     bool
-		createConfig string
+		inputFile      string
+		outputFile     string
+		outputFormat   string
+		provider       string
+		model          string
+		apiKey         string
+		baseURL        string
+		scriptType     string
+		locale         string
+		targetLanguage string
+		sourceLanguage string
+		showVersion    bool
+		showHelp       bool
+		createConfig   string
+		detectLang     bool
 	)
 
-	flag.StringVar(&inputFile, "input", "", "Input FB2 file")
-	flag.StringVar(&inputFile, "i", "", "Input FB2 file (shorthand)")
-	flag.StringVar(&outputFile, "output", "", "Output FB2 file")
-	flag.StringVar(&outputFile, "o", "", "Output FB2 file (shorthand)")
-	flag.StringVar(&provider, "provider", "dictionary", "Translation provider (dictionary, openai, anthropic, zhipu, deepseek, ollama)")
+	flag.StringVar(&inputFile, "input", "", "Input ebook file (any format: FB2, EPUB, TXT, HTML)")
+	flag.StringVar(&inputFile, "i", "", "Input ebook file (shorthand)")
+	flag.StringVar(&outputFile, "output", "", "Output file")
+	flag.StringVar(&outputFile, "o", "", "Output file (shorthand)")
+	flag.StringVar(&outputFormat, "format", "epub", "Output format (epub, fb2, txt)")
+	flag.StringVar(&outputFormat, "f", "epub", "Output format (shorthand)")
+	flag.StringVar(&provider, "provider", "dictionary", "Translation provider")
 	flag.StringVar(&provider, "p", "dictionary", "Translation provider (shorthand)")
 	flag.StringVar(&model, "model", "", "LLM model name")
 	flag.StringVar(&apiKey, "api-key", "", "API key for LLM provider")
 	flag.StringVar(&baseURL, "base-url", "", "Base URL for LLM provider")
-	flag.StringVar(&scriptType, "script", "cyrillic", "Output script type (cyrillic, latin)")
+	flag.StringVar(&scriptType, "script", "cyrillic", "Output script (cyrillic, latin)")
+	flag.StringVar(&locale, "locale", "", "Target language locale (e.g., sr, de, DE)")
+	flag.StringVar(&targetLanguage, "language", "", "Target language name (e.g., Serbian, German)")
+	flag.StringVar(&sourceLanguage, "source", "", "Source language (optional, auto-detected if not specified)")
+	flag.BoolVar(&detectLang, "detect", false, "Detect source language and exit")
 	flag.BoolVar(&showVersion, "version", false, "Show version")
 	flag.BoolVar(&showVersion, "v", false, "Show version (shorthand)")
 	flag.BoolVar(&showHelp, "help", false, "Show help")
@@ -52,7 +66,7 @@ func main() {
 
 	// Handle version
 	if showVersion {
-		fmt.Printf("Russian-Serbian FB2 Translator v%s\n", version)
+		fmt.Printf("Universal Ebook Translator v%s\n", version)
 		os.Exit(0)
 	}
 
@@ -72,14 +86,42 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Parse target language from locale or language flag
+	var targetLang language.Language
+	var err error
+
+	if locale != "" {
+		targetLang, err = language.ParseLanguage(locale)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid locale '%s': %v\n", locale, err)
+			fmt.Fprintf(os.Stderr, "Supported languages: %s\n", getSupportedLanguagesString())
+			os.Exit(1)
+		}
+	} else if targetLanguage != "" {
+		targetLang, err = language.ParseLanguage(targetLanguage)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid language '%s': %v\n", targetLanguage, err)
+			fmt.Fprintf(os.Stderr, "Supported languages: %s\n", getSupportedLanguagesString())
+			os.Exit(1)
+		}
+	} else {
+		// Default to Serbian
+		targetLang = language.Serbian
+	}
+
+	// Parse source language if specified
+	var sourceLang language.Language
+	if sourceLanguage != "" {
+		sourceLang, err = language.ParseLanguage(sourceLanguage)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid source language '%s': %v\n", sourceLanguage, err)
+			os.Exit(1)
+		}
+	}
+
 	// Load API key from environment if not provided
 	if apiKey == "" {
 		apiKey = getAPIKeyFromEnv(provider)
-	}
-
-	// Generate output filename if not provided
-	if outputFile == "" {
-		outputFile = generateOutputFilename(inputFile, provider)
 	}
 
 	// Create event bus
@@ -90,31 +132,81 @@ func main() {
 		fmt.Printf("[%s] %s\n", event.Type, event.Message)
 	})
 
+	// Parse input file
+	fmt.Printf("Universal Ebook Translator v%s\n\n", version)
+	fmt.Printf("Input file: %s\n", inputFile)
+
+	parser := ebook.NewUniversalParser()
+	book, err := parser.Parse(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse ebook: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Detected format: %s\n", book.Format)
+	fmt.Printf("Title: %s\n", book.Metadata.Title)
+	fmt.Printf("Chapters: %d\n", book.GetChapterCount())
+
+	// Detect language if requested
+	if detectLang {
+		langDetector := language.NewDetector(nil)
+		sample := book.ExtractText()
+		if len(sample) > 2000 {
+			sample = sample[:2000]
+		}
+
+		detectedLang, err := langDetector.Detect(context.Background(), sample)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Language detection failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("\nDetected language: %s (%s)\n", detectedLang.Name, detectedLang.Code)
+		os.Exit(0)
+	}
+
+	fmt.Printf("Target language: %s (%s)\n", targetLang.Name, targetLang.Code)
+
+	// Generate output filename if not provided
+	if outputFile == "" {
+		outputFile = generateOutputFilename(inputFile, targetLang.Code, outputFormat)
+	}
+
 	// Run translation
-	if err := translateFB2(inputFile, outputFile, provider, model, apiKey, baseURL, scriptType, eventBus); err != nil {
+	if err := translateEbook(
+		book,
+		outputFile,
+		outputFormat,
+		provider,
+		model,
+		apiKey,
+		baseURL,
+		scriptType,
+		sourceLang,
+		targetLang,
+		eventBus,
+	); err != nil {
 		fmt.Fprintf(os.Stderr, "Translation failed: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("\n✓ Translation completed successfully!\n")
 	fmt.Printf("Output file: %s\n", outputFile)
+	fmt.Printf("Output format: %s\n", outputFormat)
 }
 
-func translateFB2(inputFile, outputFile, providerName, model, apiKey, baseURL, scriptType string, eventBus *events.EventBus) error {
+func translateEbook(
+	book *ebook.Book,
+	outputFile, outputFormat, providerName, model, apiKey, baseURL, scriptType string,
+	sourceLang, targetLang language.Language,
+	eventBus *events.EventBus,
+) error {
 	ctx := context.Background()
-
-	// Parse input FB2
-	fmt.Printf("Parsing FB2 file: %s\n", inputFile)
-	parser := fb2.NewParser()
-	book, err := parser.Parse(inputFile)
-	if err != nil {
-		return fmt.Errorf("failed to parse FB2: %w", err)
-	}
 
 	// Create translator
 	config := translator.TranslationConfig{
-		SourceLang: "ru",
-		TargetLang: "sr",
+		SourceLang: sourceLang.Code,
+		TargetLang: targetLang.Code,
 		Provider:   providerName,
 		Model:      model,
 		APIKey:     apiKey,
@@ -123,71 +215,82 @@ func translateFB2(inputFile, outputFile, providerName, model, apiKey, baseURL, s
 	}
 
 	var trans translator.Translator
-	if providerName == "dictionary" {
-		trans = dictionary.NewDictionaryTranslator(config)
-	} else {
-		trans, err = llm.NewLLMTranslator(config)
-		if err != nil {
-			return fmt.Errorf("failed to create translator: %w", err)
-		}
-	}
-
-	fmt.Printf("Using translator: %s\n", trans.GetName())
-
-	// Translate book title
+	var err error
 	sessionID := "cli-session"
-	if book.Description.TitleInfo.BookTitle != "" {
-		fmt.Printf("Translating title...\n")
-		translated, err := trans.TranslateWithProgress(
-			ctx,
-			book.Description.TitleInfo.BookTitle,
-			"Book title",
-			eventBus,
-			sessionID,
-		)
-		if err == nil {
-			book.Description.TitleInfo.BookTitle = translated
+
+	// Try multi-LLM first if provider is "multi-llm" or not specified
+	if providerName == "multi-llm" || providerName == "" {
+		multiTrans, multiErr := coordination.NewMultiLLMTranslatorWrapper(config, eventBus, sessionID)
+		if multiErr == nil {
+			trans = multiTrans
+			fmt.Printf("Using translator: multi-llm-coordinator (%d instances)\n\n", multiTrans.Coordinator.GetInstanceCount())
+		} else if providerName == "multi-llm" {
+			// User explicitly requested multi-llm but it failed
+			return fmt.Errorf("failed to create multi-LLM translator: %w", multiErr)
 		}
+		// Otherwise fall through to single translator
 	}
 
-	// Translate body sections
-	fmt.Printf("Translating content...\n")
-	totalSections := 0
-	for _, body := range book.Body {
-		totalSections += len(body.Section)
-	}
-
-	currentSection := 0
-	for i := range book.Body {
-		for j := range book.Body[i].Section {
-			currentSection++
-			fmt.Printf("Translating section %d/%d...\n", currentSection, totalSections)
-
-			if err := translateSection(ctx, &book.Body[i].Section[j], trans, eventBus, sessionID); err != nil {
-				return fmt.Errorf("failed to translate section: %w", err)
+	// Fall back to single translator
+	if trans == nil {
+		if providerName == "dictionary" {
+			trans = dictionary.NewDictionaryTranslator(config)
+		} else {
+			trans, err = llm.NewLLMTranslator(config)
+			if err != nil {
+				return fmt.Errorf("failed to create translator: %w", err)
 			}
 		}
+		fmt.Printf("Using translator: %s\n\n", trans.GetName())
+	}
+
+	// Create language detector
+	langDetector := language.NewDetector(nil)
+
+	// Create universal translator
+	universalTrans := translator.NewUniversalTranslator(
+		trans,
+		langDetector,
+		sourceLang,
+		targetLang,
+	)
+
+	// Translate the book
+	if err := universalTrans.TranslateBook(ctx, book, eventBus, sessionID); err != nil {
+		return fmt.Errorf("translation failed: %w", err)
 	}
 
 	// Convert script if needed
-	if scriptType == "latin" {
+	if scriptType == "latin" && targetLang.Code == "sr" {
 		fmt.Printf("Converting to Latin script...\n")
 		converter := script.NewConverter()
-		book.Description.TitleInfo.BookTitle = converter.ToLatin(book.Description.TitleInfo.BookTitle)
-		for i := range book.Body {
-			for j := range book.Body[i].Section {
-				convertSectionToLatin(&book.Body[i].Section[j], converter)
-			}
-		}
+		convertBookToLatin(book, converter)
 	}
 
-	// Update metadata
-	book.SetLanguage("sr")
-
-	// Write output
+	// Write output in requested format
 	fmt.Printf("Writing output file...\n")
-	if err := parser.Write(outputFile, book); err != nil {
-		return fmt.Errorf("failed to write FB2: %w", err)
+	outFormat := format.ParseFormat(outputFormat)
+
+	switch outFormat {
+	case format.FormatEPUB:
+		writer := ebook.NewEPUBWriter()
+		if err := writer.Write(book, outputFile); err != nil {
+			return fmt.Errorf("failed to write EPUB: %w", err)
+		}
+
+	case format.FormatFB2:
+		// Convert to FB2 and write
+		// For now, we'll use EPUB as primary format
+		return fmt.Errorf("FB2 output format not yet implemented")
+
+	case format.FormatTXT:
+		// Write as plain text
+		if err := writeAsText(book, outputFile); err != nil {
+			return fmt.Errorf("failed to write TXT: %w", err)
+		}
+
+	default:
+		return fmt.Errorf("unsupported output format: %s", outputFormat)
 	}
 
 	// Print statistics
@@ -201,64 +304,48 @@ func translateFB2(inputFile, outputFile, providerName, model, apiKey, baseURL, s
 	return nil
 }
 
-func translateSection(ctx context.Context, section *fb2.Section, trans translator.Translator, eventBus *events.EventBus, sessionID string) error {
-	// Translate title
-	for i := range section.Title.Paragraphs {
-		if section.Title.Paragraphs[i].Text != "" {
-			translated, err := trans.TranslateWithProgress(
-				ctx,
-				section.Title.Paragraphs[i].Text,
-				"Section title",
-				eventBus,
-				sessionID,
-			)
-			if err == nil {
-				section.Title.Paragraphs[i].Text = translated
-			}
-		}
+func convertBookToLatin(book *ebook.Book, converter *script.Converter) {
+	// Convert metadata
+	book.Metadata.Title = converter.ToLatin(book.Metadata.Title)
+	book.Metadata.Description = converter.ToLatin(book.Metadata.Description)
+
+	for i := range book.Metadata.Authors {
+		book.Metadata.Authors[i] = converter.ToLatin(book.Metadata.Authors[i])
 	}
 
-	// Translate paragraphs
-	for i := range section.Paragraph {
-		if section.Paragraph[i].Text != "" {
-			translated, err := trans.TranslateWithProgress(
-				ctx,
-				section.Paragraph[i].Text,
-				"Paragraph",
-				eventBus,
-				sessionID,
-			)
-			if err == nil {
-				section.Paragraph[i].Text = translated
-			}
-		}
+	// Convert chapters
+	for i := range book.Chapters {
+		convertChapterToLatin(&book.Chapters[i], converter)
 	}
-
-	// Recursively translate subsections
-	for i := range section.Section {
-		if err := translateSection(ctx, &section.Section[i], trans, eventBus, sessionID); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func convertSectionToLatin(section *fb2.Section, converter *script.Converter) {
-	// Convert title
-	for i := range section.Title.Paragraphs {
-		section.Title.Paragraphs[i].Text = converter.ToLatin(section.Title.Paragraphs[i].Text)
-	}
+func convertChapterToLatin(chapter *ebook.Chapter, converter *script.Converter) {
+	chapter.Title = converter.ToLatin(chapter.Title)
 
-	// Convert paragraphs
-	for i := range section.Paragraph {
-		section.Paragraph[i].Text = converter.ToLatin(section.Paragraph[i].Text)
+	for i := range chapter.Sections {
+		convertSectionToLatin(&chapter.Sections[i], converter)
 	}
+}
 
-	// Recursively convert subsections
-	for i := range section.Section {
-		convertSectionToLatin(&section.Section[i], converter)
+func convertSectionToLatin(section *ebook.Section, converter *script.Converter) {
+	section.Title = converter.ToLatin(section.Title)
+	section.Content = converter.ToLatin(section.Content)
+
+	for i := range section.Subsections {
+		convertSectionToLatin(&section.Subsections[i], converter)
 	}
+}
+
+func writeAsText(book *ebook.Book, filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	text := book.ExtractText()
+	_, err = file.WriteString(text)
+	return err
 }
 
 func getAPIKeyFromEnv(provider string) string {
@@ -267,6 +354,7 @@ func getAPIKeyFromEnv(provider string) string {
 		"anthropic": "ANTHROPIC_API_KEY",
 		"zhipu":     "ZHIPU_API_KEY",
 		"deepseek":  "DEEPSEEK_API_KEY",
+		"qwen":      "QWEN_API_KEY",
 	}
 
 	if envVar, ok := envMappings[provider]; ok {
@@ -276,10 +364,13 @@ func getAPIKeyFromEnv(provider string) string {
 	return ""
 }
 
-func generateOutputFilename(inputFile, provider string) string {
+func generateOutputFilename(inputFile, targetLang, outputFormat string) string {
 	ext := filepath.Ext(inputFile)
 	base := strings.TrimSuffix(inputFile, ext)
-	return fmt.Sprintf("%s_sr_%s%s", base, provider, ext)
+
+	// Add target language
+	outputExt := "." + outputFormat
+	return fmt.Sprintf("%s_%s%s", base, targetLang, outputExt)
 }
 
 func createConfigFile(filename string) error {
@@ -288,54 +379,94 @@ func createConfigFile(filename string) error {
   "model": "gpt-4",
   "temperature": 0.3,
   "max_tokens": 4000,
+  "target_language": "sr",
+  "output_format": "epub",
   "script": "cyrillic"
 }
 `
 	return os.WriteFile(filename, []byte(config), 0644)
 }
 
+func getSupportedLanguagesString() string {
+	langs := language.GetSupportedLanguages()
+	var names []string
+	for _, lang := range langs {
+		names = append(names, fmt.Sprintf("%s (%s)", lang.Name, lang.Code))
+	}
+	return strings.Join(names, ", ")
+}
+
 func printHelp() {
-	fmt.Printf(`Russian-Serbian FB2 Translator v%s
+	fmt.Printf(`Universal Ebook Translator v%s
+
+Translate ebooks between any languages with support for multiple formats.
 
 Usage:
-  translator [options] -input <file.fb2>
+  translator [options] -input <file>
 
 Options:
-  -i, -input <file>       Input FB2 file (required)
-  -o, -output <file>      Output FB2 file (optional, auto-generated if not provided)
-  -p, -provider <name>    Translation provider (default: dictionary)
-                          Options: dictionary, openai, anthropic, zhipu, deepseek, ollama
-  -model <name>           LLM model name (e.g., gpt-4, claude-3-sonnet-20240229)
-  -api-key <key>          API key for LLM provider (or use environment variables)
-  -base-url <url>         Base URL for LLM provider (optional)
-  -script <type>          Output script (cyrillic or latin, default: cyrillic)
+  -i, -input <file>       Input ebook file (any format: FB2, EPUB, TXT, HTML)
+  -o, -output <file>      Output file (auto-generated if not specified)
+  -f, -format <format>    Output format (epub, fb2, txt) [default: epub]
+
+  -locale <code>          Target language locale (e.g., sr, de, fr, es)
+  -language <name>        Target language name (e.g., Serbian, German, French)
+                          (case-insensitive, default: Serbian)
+  -source <lang>          Source language (optional, auto-detected)
+  -detect                 Detect source language and exit
+
+  -p, -provider <name>    Translation provider (dictionary, openai, anthropic,
+                          zhipu, deepseek, qwen, ollama) [default: dictionary]
+  -model <name>           LLM model name (e.g., gpt-4, claude-3-sonnet)
+  -api-key <key>          API key for LLM provider
+  -base-url <url>         Base URL for LLM provider
+
+  -script <type>          Output script for Serbian (cyrillic, latin)
+                          [default: cyrillic]
+
   -create-config <file>   Create a config file template
   -v, -version            Show version
   -h, -help               Show this help
+
+Supported Input Formats:
+  FB2, EPUB, TXT, HTML
+
+Supported Output Formats:
+  EPUB (default), TXT
+
+Supported Languages:
+  %s
 
 Environment Variables:
   OPENAI_API_KEY          OpenAI API key
   ANTHROPIC_API_KEY       Anthropic API key
   ZHIPU_API_KEY           Zhipu AI API key
   DEEPSEEK_API_KEY        DeepSeek API key
+  QWEN_API_KEY            Qwen (Alibaba Cloud) API key
 
 Examples:
-  # Basic dictionary translation
-  translator -input book.fb2
+  # Translate any ebook to Serbian (auto-detect source language)
+  translator -input book.epub
 
-  # LLM translation with OpenAI
+  # Translate to German
+  translator -input book.fb2 -locale de
+  translator -input book.epub -language German
+
+  # Translate Russian to French with OpenAI
   export OPENAI_API_KEY="your-key"
-  translator -input book.fb2 -provider openai -model gpt-4
+  translator -input book_ru.epub -locale fr -provider openai -model gpt-4
 
-  # LLM translation with Anthropic Claude
-  export ANTHROPIC_API_KEY="your-key"
-  translator -input book.fb2 -provider anthropic
+  # Detect language only
+  translator -input mystery_book.epub -detect
 
-  # Latin script output
-  translator -input book.fb2 -provider deepseek -script latin
+  # Latin script output (for Serbian)
+  translator -input book.fb2 -script latin
+
+  # Output as plain text
+  translator -input book.epub -locale de -format txt
 
   # Local Ollama translation
-  translator -input book.fb2 -provider ollama -model llama3:8b
+  translator -input book.txt -locale es -provider ollama -model llama3:8b
 
-`, version)
+`, version, getSupportedLanguagesString())
 }

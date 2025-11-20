@@ -16,6 +16,7 @@ const (
 	ProviderAnthropic Provider = "anthropic"
 	ProviderZhipu     Provider = "zhipu"
 	ProviderDeepSeek  Provider = "deepseek"
+	ProviderQwen      Provider = "qwen"
 	ProviderOllama    Provider = "ollama"
 )
 
@@ -48,6 +49,8 @@ func NewLLMTranslator(config translator.TranslationConfig) (*LLMTranslator, erro
 		client, err = NewZhipuClient(config)
 	case ProviderDeepSeek:
 		client, err = NewDeepSeekClient(config)
+	case ProviderQwen:
+		client, err = NewQwenClient(config)
 	case ProviderOllama:
 		client, err = NewOllamaClient(config)
 	default:

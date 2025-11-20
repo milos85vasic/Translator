@@ -1,0 +1,244 @@
+package format
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// Format represents an ebook format
+type Format string
+
+const (
+	FormatFB2  Format = "fb2"
+	FormatEPUB Format = "epub"
+	FormatPDF  Format = "pdf"
+	FormatMOBI Format = "mobi"
+	FormatAZW  Format = "azw"
+	FormatAZW3 Format = "azw3"
+	FormatTXT  Format = "txt"
+	FormatHTML Format = "html"
+	FormatDOCX Format = "docx"
+	FormatRTF  Format = "rtf"
+	FormatUnknown Format = "unknown"
+)
+
+// Magic byte signatures for different formats
+var magicBytes = map[Format][]byte{
+	FormatPDF:  []byte("%PDF"),
+	FormatEPUB: []byte("PK"),  // EPUB is a ZIP file
+	FormatMOBI: []byte("BOOKMOBI"),
+	FormatDOCX: []byte("PK"),  // DOCX is also a ZIP
+}
+
+// Detector handles ebook format detection
+type Detector struct{}
+
+// NewDetector creates a new format detector
+func NewDetector() *Detector {
+	return &Detector{}
+}
+
+// DetectFile detects the format of a file
+func (d *Detector) DetectFile(filename string) (Format, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return FormatUnknown, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Read first 512 bytes for magic byte detection
+	header := make([]byte, 512)
+	n, err := file.Read(header)
+	if err != nil && err != io.EOF {
+		return FormatUnknown, fmt.Errorf("failed to read file header: %w", err)
+	}
+	header = header[:n]
+
+	// Check file extension first
+	ext := strings.ToLower(filepath.Ext(filename))
+	formatByExt := d.detectByExtension(ext)
+
+	// Check magic bytes
+	formatByMagic := d.detectByMagicBytes(header)
+
+	// Prioritize magic bytes over extension
+	if formatByMagic != FormatUnknown {
+		// Disambiguate ZIP-based formats
+		if formatByMagic == FormatEPUB {
+			return d.disambiguateZipFormat(filename, ext)
+		}
+		return formatByMagic, nil
+	}
+
+	if formatByExt != FormatUnknown {
+		return formatByExt, nil
+	}
+
+	// Try content-based detection
+	return d.detectByContent(header), nil
+}
+
+// detectByExtension detects format by file extension
+func (d *Detector) detectByExtension(ext string) Format {
+	ext = strings.TrimPrefix(ext, ".")
+	ext = strings.ToLower(ext)
+
+	switch ext {
+	case "fb2":
+		return FormatFB2
+	case "epub":
+		return FormatEPUB
+	case "pdf":
+		return FormatPDF
+	case "mobi", "prc":
+		return FormatMOBI
+	case "azw":
+		return FormatAZW
+	case "azw3":
+		return FormatAZW3
+	case "txt":
+		return FormatTXT
+	case "html", "htm":
+		return FormatHTML
+	case "docx":
+		return FormatDOCX
+	case "rtf":
+		return FormatRTF
+	default:
+		return FormatUnknown
+	}
+}
+
+// detectByMagicBytes detects format by magic bytes
+func (d *Detector) detectByMagicBytes(data []byte) Format {
+	for format, magic := range magicBytes {
+		if bytes.HasPrefix(data, magic) {
+			return format
+		}
+	}
+	return FormatUnknown
+}
+
+// disambiguateZipFormat distinguishes between EPUB, DOCX, and other ZIP formats
+func (d *Detector) disambiguateZipFormat(filename string, ext string) (Format, error) {
+	// Check extension first
+	switch strings.ToLower(ext) {
+	case ".epub":
+		return FormatEPUB, nil
+	case ".docx":
+		return FormatDOCX, nil
+	}
+
+	// For now, assume EPUB if it's a ZIP and has .epub extension
+	// In a full implementation, we'd check for mimetype file inside ZIP
+	return FormatEPUB, nil
+}
+
+// detectByContent detects format by analyzing content
+func (d *Detector) detectByContent(data []byte) Format {
+	content := string(data)
+
+	// Check for XML-based formats
+	if strings.Contains(content, "<?xml") {
+		if strings.Contains(content, "FictionBook") {
+			return FormatFB2
+		}
+		if strings.Contains(content, "<html") || strings.Contains(content, "<HTML") {
+			return FormatHTML
+		}
+	}
+
+	// Check for HTML
+	if strings.Contains(content, "<html") || strings.Contains(content, "<!DOCTYPE html") {
+		return FormatHTML
+	}
+
+	// Check for RTF
+	if strings.HasPrefix(content, "{\\rtf") {
+		return FormatRTF
+	}
+
+	// Default to plain text if mostly readable
+	if d.isPlainText(data) {
+		return FormatTXT
+	}
+
+	return FormatUnknown
+}
+
+// isPlainText checks if data is mostly plain text
+func (d *Detector) isPlainText(data []byte) bool {
+	printableCount := 0
+	for _, b := range data {
+		if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' || b >= 128 {
+			printableCount++
+		}
+	}
+	return float64(printableCount)/float64(len(data)) > 0.85
+}
+
+// IsSupported checks if a format is supported
+func (d *Detector) IsSupported(format Format) bool {
+	supported := []Format{
+		FormatFB2,
+		FormatEPUB,
+		FormatTXT,
+		FormatHTML,
+		// PDF, MOBI, etc. would require additional libraries
+	}
+
+	for _, f := range supported {
+		if f == format {
+			return true
+		}
+	}
+	return false
+}
+
+// GetSupportedFormats returns list of supported formats
+func (d *Detector) GetSupportedFormats() []Format {
+	return []Format{
+		FormatFB2,
+		FormatEPUB,
+		FormatTXT,
+		FormatHTML,
+	}
+}
+
+// FormatToString converts Format to string
+func (f Format) String() string {
+	return string(f)
+}
+
+// ParseFormat parses a format string
+func ParseFormat(s string) Format {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "fb2":
+		return FormatFB2
+	case "epub":
+		return FormatEPUB
+	case "pdf":
+		return FormatPDF
+	case "mobi":
+		return FormatMOBI
+	case "azw":
+		return FormatAZW
+	case "azw3":
+		return FormatAZW3
+	case "txt", "text":
+		return FormatTXT
+	case "html", "htm":
+		return FormatHTML
+	case "docx":
+		return FormatDOCX
+	case "rtf":
+		return FormatRTF
+	default:
+		return FormatUnknown
+	}
+}

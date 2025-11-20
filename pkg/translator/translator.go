@@ -2,7 +2,13 @@ package translator
 
 import (
 	"context"
+	"errors"
 	"digital.vasic.translator/pkg/events"
+)
+
+var (
+	// ErrNoLLMInstances is returned when no LLM instances are available
+	ErrNoLLMInstances = errors.New("no LLM instances available")
 )
 
 // TranslationConfig holds translation configuration

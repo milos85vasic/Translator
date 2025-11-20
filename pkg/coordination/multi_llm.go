@@ -19,6 +19,7 @@ type LLMInstance struct {
 	Translator translator.Translator
 	Provider   string
 	Model      string
+	Priority   int       // Higher priority = more instances (10=API key, 5=OAuth, 1=free)
 	Available  bool
 	LastUsed   time.Time
 	mu         sync.Mutex
@@ -77,20 +78,42 @@ func (c *MultiLLMCoordinator) initializeLLMInstances() {
 		return
 	}
 
+	// Calculate total instances based on priority
+	// API key (priority 10) gets 3 instances, OAuth (priority 5) gets 2, free (priority 1) gets 1
+	getInstanceCount := func(priority int) int {
+		switch {
+		case priority >= 10:
+			return 3 // API key providers
+		case priority >= 5:
+			return 2 // OAuth providers
+		default:
+			return 1 // Free/local providers
+		}
+	}
+
+	totalInstances := 0
+	for _, config := range providers {
+		priority := config["priority"].(int)
+		totalInstances += getInstanceCount(priority)
+	}
+
 	c.emitEvent(events.Event{
 		Type:      "multi_llm_init",
 		SessionID: c.sessionID,
-		Message:   fmt.Sprintf("Initializing %d LLM instances across %d providers", len(providers)*2, len(providers)),
+		Message:   fmt.Sprintf("Initializing %d LLM instances across %d providers (prioritizing API key providers)", totalInstances, len(providers)),
 		Data: map[string]interface{}{
 			"providers": providers,
 		},
 	})
 
-	// Create multiple instances per provider for load distribution
+	// Create multiple instances per provider based on priority
+	// API-key providers get 3x instances, OAuth 2x, free/local 1x
 	instanceID := 1
 	for provider, config := range providers {
-		// Create 2 instances per provider
-		for i := 0; i < 2; i++ {
+		priority := config["priority"].(int)
+		instanceCount := getInstanceCount(priority)
+
+		for i := 0; i < instanceCount; i++ {
 			translatorConfig := translator.TranslationConfig{
 				Provider: provider,
 				Model:    config["model"].(string),
@@ -108,6 +131,7 @@ func (c *MultiLLMCoordinator) initializeLLMInstances() {
 				Translator: trans,
 				Provider:   provider,
 				Model:      config["model"].(string),
+				Priority:   priority,
 				Available:  true,
 				LastUsed:   time.Time{},
 			}
@@ -134,54 +158,81 @@ func (c *MultiLLMCoordinator) initializeLLMInstances() {
 }
 
 // discoverProviders checks environment for available LLM API keys
+// Priority levels: 10=API key (paid), 5=OAuth, 1=free/local
 func (c *MultiLLMCoordinator) discoverProviders() map[string]map[string]interface{} {
 	providers := make(map[string]map[string]interface{})
 
-	// Check OpenAI
+	// Check OpenAI (API key - high priority)
 	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
 		providers["openai"] = map[string]interface{}{
-			"api_key": apiKey,
-			"model":   getEnvOrDefault("OPENAI_MODEL", "gpt-4"),
+			"api_key":  apiKey,
+			"model":    getEnvOrDefault("OPENAI_MODEL", "gpt-4"),
+			"priority": 10, // API key = high priority
 		}
 	}
 
-	// Check Anthropic
+	// Check Anthropic (API key - high priority)
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
 		providers["anthropic"] = map[string]interface{}{
-			"api_key": apiKey,
-			"model":   getEnvOrDefault("ANTHROPIC_MODEL", "claude-3-sonnet-20240229"),
+			"api_key":  apiKey,
+			"model":    getEnvOrDefault("ANTHROPIC_MODEL", "claude-3-sonnet-20240229"),
+			"priority": 10, // API key = high priority
 		}
 	}
 
-	// Check Zhipu AI
+	// Check Zhipu AI (API key - high priority)
 	if apiKey := os.Getenv("ZHIPU_API_KEY"); apiKey != "" {
 		providers["zhipu"] = map[string]interface{}{
-			"api_key": apiKey,
-			"model":   getEnvOrDefault("ZHIPU_MODEL", "glm-4"),
+			"api_key":  apiKey,
+			"model":    getEnvOrDefault("ZHIPU_MODEL", "glm-4"),
+			"priority": 10, // API key = high priority
 		}
 	}
 
-	// Check DeepSeek
+	// Check DeepSeek (API key - high priority)
 	if apiKey := os.Getenv("DEEPSEEK_API_KEY"); apiKey != "" {
 		providers["deepseek"] = map[string]interface{}{
-			"api_key": apiKey,
-			"model":   getEnvOrDefault("DEEPSEEK_MODEL", "deepseek-chat"),
+			"api_key":  apiKey,
+			"model":    getEnvOrDefault("DEEPSEEK_MODEL", "deepseek-chat"),
+			"priority": 10, // API key = high priority
 		}
 	}
 
 	// Check Qwen (Alibaba Cloud)
+	// Priority depends on authentication method
 	if apiKey := os.Getenv("QWEN_API_KEY"); apiKey != "" {
 		providers["qwen"] = map[string]interface{}{
-			"api_key": apiKey,
-			"model":   getEnvOrDefault("QWEN_MODEL", "qwen-plus"),
+			"api_key":  apiKey,
+			"model":    getEnvOrDefault("QWEN_MODEL", "qwen-plus"),
+			"priority": 10, // API key = high priority
+		}
+	} else {
+		// Check for OAuth credentials
+		homeDir := os.Getenv("HOME")
+		if homeDir != "" {
+			qwenOAuthPaths := []string{
+				homeDir + "/.translator/qwen_credentials.json",
+				homeDir + "/.qwen/oauth_creds.json",
+			}
+			for _, path := range qwenOAuthPaths {
+				if _, err := os.Stat(path); err == nil {
+					providers["qwen"] = map[string]interface{}{
+						"api_key":  "", // OAuth will be used
+						"model":    getEnvOrDefault("QWEN_MODEL", "qwen-plus"),
+						"priority": 5, // OAuth = medium priority
+					}
+					break
+				}
+			}
 		}
 	}
 
-	// Check Ollama (local, no API key needed)
+	// Check Ollama (local, no API key needed - lowest priority)
 	if os.Getenv("OLLAMA_ENABLED") == "true" {
 		providers["ollama"] = map[string]interface{}{
-			"api_key": "",
-			"model":   getEnvOrDefault("OLLAMA_MODEL", "llama3:8b"),
+			"api_key":  "",
+			"model":    getEnvOrDefault("OLLAMA_MODEL", "llama3:8b"),
+			"priority": 1, // Free/local = low priority
 		}
 	}
 

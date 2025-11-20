@@ -24,6 +24,12 @@ translationlist.txt
 config_with_keys.json
 api_keys.json
 
+# Environment files with secrets
+.env
+.env.*
+secrets.*
+keys.*
+
 # Logs and cache
 *.log
 *.cache

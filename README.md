@@ -36,16 +36,40 @@ A comprehensive toolkit for translating Russian FB2 (FictionBook2) e-books to Se
 ```bash
 pip3 install -r requirements.txt
 ```
+3. Set up API keys as environment variables (NEVER hardcode them):
+```bash
+# Create a .env file (add to .gitignore)
+echo "OPENAI_API_KEY=your-openai-key" >> .env
+echo "ANTHROPIC_API_KEY=your-anthropic-key" >> .env
+echo "ZHIPU_API_KEY=your-zhipu-key" >> .env
+echo "DEEPSEEK_API_KEY=your-deepseek-key" >> .env
+
+# Or export them directly
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export ZHIPU_API_KEY="your-zhipu-key"
+export DEEPSEEK_API_KEY="your-deepseek-key"
+```
 
 ### Basic Usage
 
 **AI-Powered Translation (Recommended):**
 ```bash
 # Using OpenAI GPT-4
-LLM_PROVIDER=openai LLM_API_KEY=your-key python3 llm_fb2_translator.py book_ru.fb2
+export OPENAI_API_KEY="your-key"
+python3 llm_fb2_translator.py book_ru.fb2
 
 # Using Zhipu AI (GLM-4)
-ZHIPU_API_KEY=your-key python3 llm_fb2_translator.py book_ru.fb2 --provider zhipu
+export ZHIPU_API_KEY="your-key"
+python3 llm_fb2_translator.py book_ru.fb2 --provider zhipu
+
+# Using DeepSeek (cost-effective)
+export DEEPSEEK_API_KEY="your-key"
+python3 llm_fb2_translator.py book_ru.fb2 --provider deepseek
+
+# Using Anthropic Claude
+export ANTHROPIC_API_KEY="your-key"
+python3 llm_fb2_translator.py book_ru.fb2 --provider anthropic
 
 # Using local Ollama (free)
 python3 llm_fb2_translator.py book_ru.fb2 --provider ollama --model llama3:8b
@@ -75,25 +99,25 @@ python3 high_quality_fb2_translator.py input_ru.fb2 output_sr.b2
 
 ### AI Translation Setup
 
+**IMPORTANT**: Never hardcode API keys in configuration files. Use environment variables.
+
 Create a configuration file:
 ```bash
 python3 llm_fb2_translator.py --create-config my_config.json
 ```
 
-Example configuration:
+Example configuration (NO API KEY):
 ```json
 {
   "provider": "openai",
   "model": "gpt-4",
-  "api_key": "your-api-key",
   "target_script": "cyrillic",
   "cache_translations": true,
   "max_tokens": 4000
 }
 ```
 
-### Environment Variables
-
+API keys are loaded from environment variables:
 ```bash
 export OPENAI_API_KEY="your-openai-key"
 export ANTHROPIC_API_KEY="your-anthropic-key"

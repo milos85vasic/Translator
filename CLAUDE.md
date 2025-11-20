@@ -13,6 +13,32 @@ Install required Python packages:
 pip3 install -r requirements.txt
 ```
 
+### API Keys (Required)
+
+For security, API keys should be set as environment variables rather than hardcoded:
+
+```bash
+# For Zhipu AI (GLM-4)
+export ZHIPU_API_KEY="your-zhipu-api-key"
+
+# For DeepSeek
+export DEEPSEEK_API_KEY="your-deepseek-api-key"
+
+# For OpenAI GPT
+export OPENAI_API_KEY="your-openai-api-key"
+
+# For Anthropic Claude
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+```
+
+Or create a `.env` file (ensure it's in `.gitignore`):
+```
+ZHIPU_API_KEY=your-zhipu-api-key
+DEEPSEEK_API_KEY=your-deepseek-api-key
+OPENAI_API_KEY=your-openai-api-key
+ANTHROPIC_API_KEY=your-anthropic-api-key
+```
+
 For specific LLM providers:
 ```bash
 # OpenAI GPT
@@ -38,16 +64,20 @@ brew install pango
 **NEW: Advanced LLM Translation (Highest Quality):**
 ```bash
 # Using OpenAI GPT-4
-LLM_PROVIDER=openai LLM_API_KEY=your-key python3 llm_fb2_translator.py book_ru.fb2
+export OPENAI_API_KEY="your-key"
+python3 llm_fb2_translator.py book_ru.fb2
 
 # Using Zhipu AI (cutting edge GLM-4)
-ZHIPU_API_KEY=your-key python3 llm_fb2_translator.py book_ru.fb2 --provider zhipu
+export ZHIPU_API_KEY="your-key"
+python3 llm_fb2_translator.py book_ru.fb2 --provider zhipu
 
 # Using DeepSeek (cost-effective, excellent quality)
-DEEPSEEK_API_KEY=your-key python3 llm_fb2_translator.py book_ru.fb2 --provider deepseek
+export DEEPSEEK_API_KEY="your-key"
+python3 llm_fb2_translator.py book_ru.fb2 --provider deepseek
 
 # Using Anthropic Claude
-python3 llm_fb2_translator.py book_ru.fb2 --config config_anthropic.json
+export ANTHROPIC_API_KEY="your-key"
+python3 llm_fb2_translator.py book_ru.fb2 --provider anthropic
 
 # Using local Ollama (free, offline)
 python3 llm_fb2_translator.py book_ru.fb2 --provider ollama --model llama3:8b

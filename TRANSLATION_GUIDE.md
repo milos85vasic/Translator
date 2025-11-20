@@ -11,6 +11,38 @@
 
 ## Translation Process Options
 
+### Option 0: AI-Powered Translation (NEW - Recommended)
+
+Set up API keys as environment variables (NEVER hardcode in code):
+```bash
+# For Zhipu AI (GLM-4)
+export ZHIPU_API_KEY="your-zhipu-api-key"
+
+# For DeepSeek (cost-effective)
+export DEEPSEEK_API_KEY="your-deepseek-api-key"
+
+# For OpenAI GPT-4
+export OPENAI_API_KEY="your-openai-api-key"
+
+# For Anthropic Claude
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+```
+
+Then translate:
+```bash
+# Using Zhipu AI (cutting edge quality)
+python3 llm_fb2_translator.py Ratibor_1f.b2 --provider zhipu
+
+# Using DeepSeek (cost-effective, excellent quality)
+python3 llm_fb2_translator.py Ratibor_1f.b2 --provider deepseek
+
+# Using OpenAI GPT-4
+python3 llm_fb2_translator.py Ratibor_1f.b2 --provider openai
+
+# Using local Ollama (free)
+python3 llm_fb2_translator.py Ratibor_1f.b2 --provider ollama --model llama3:8b
+```
+
 ### Option 1: Manual Translation (Recommended for Best Quality)
 
 1. Open `translation_list.txt` in a text editor

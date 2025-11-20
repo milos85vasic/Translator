@@ -8,7 +8,7 @@ This guide explains how to translate any Russian FB2 book to Serbian Cyrillic us
 
 Install required Python packages:
 ```bash
-pip3 install googletrans==4.0.0-rc1 ebooklib weasyprint
+pip3 install googletrans==4.0.0-rc1 ebooklib weasyprint openai anthropic
 ```
 
 For PDF conversion, also install system dependencies:
@@ -16,9 +16,54 @@ For PDF conversion, also install system dependencies:
 brew install pango  # macOS
 ```
 
+### API Keys (Required for AI Translation)
+
+IMPORTANT: Set API keys as environment variables - NEVER hardcode them in code:
+
+```bash
+# Create a .env file (ensure it's in .gitignore)
+cat > .env << EOF
+OPENAI_API_KEY=your-openai-key
+ANTHROPIC_API_KEY=your-anthropic-key
+ZHIPU_API_KEY=your-zhipu-key
+DEEPSEEK_API_KEY=your-deepseek-key
+EOF
+
+# Or export them directly in your shell
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export ZHIPU_API_KEY="your-zhipu-key"
+export DEEPSEEK_API_KEY="your-deepseek-key"
+```
+
 ## Translation Methods
 
-### Method 1: Basic Dictionary Translation (Recommended)
+### Method 0: AI-Powered Translation (NEW - Highest Quality)
+
+Professional literary translation using LLMs:
+
+```bash
+# Using Zhipu AI (cutting edge GLM-4)
+export ZHIPU_API_KEY="your-key"
+python3 llm_fb2_translator.py mybook_ru.fb2 --provider zhipu
+
+# Using DeepSeek (cost-effective, excellent quality)
+export DEEPSEEK_API_KEY="your-key"
+python3 llm_fb2_translator.py mybook_ru.fb2 --provider deepseek
+
+# Using OpenAI GPT-4
+export OPENAI_API_KEY="your-key"
+python3 llm_fb2_translator.py mybook_ru.fb2 --provider openai
+
+# Using Anthropic Claude
+export ANTHROPIC_API_KEY="your-key"
+python3 llm_fb2_translator.py mybook_ru.fb2 --provider anthropic
+
+# Using local Ollama (free, offline)
+python3 llm_fb2_translator.py mybook_ru.fb2 --provider ollama --model llama3:8b
+```
+
+### Method 1: Basic Dictionary Translation (Fast)
 
 Fast translation using a predefined dictionary of common Russian to Serbian words:
 

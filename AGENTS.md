@@ -46,8 +46,15 @@ pip3 install -r requirements.txt
 
 ### Translation Quality
 - NEW: Use LLM (GPT-4, Claude, Ollama) for professional literary translation quality
+- API keys should be loaded from environment variables, never hardcoded
 - Cache translations to avoid API limits
 - Use retry logic for network operations
 - Support both Cyrillic and Latin Serbian scripts
 - Validate output XML structure
 - Advanced prompt engineering for literary context preservation
+
+### Security Guidelines
+- NEVER hardcode API keys in source code
+- ALWAYS use environment variables for sensitive data
+- Use `os.environ.get("API_KEY_NAME")` pattern
+- Keep `.env` files in `.gitignore`

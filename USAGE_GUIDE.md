@@ -8,7 +8,7 @@ Due to network issues with Chinese endpoints (Qwen, Zhipu), use DeepSeek directl
 
 ```bash
 # Set API key
-export DEEPSEEK_API_KEY="REDACTED_DEEPSEEK_KEY"
+export DEEPSEEK_API_KEY="your-deepseek-api-key"
 
 # Use the convenience script
 ./translate_with_deepseek.sh Books/your_book.epub

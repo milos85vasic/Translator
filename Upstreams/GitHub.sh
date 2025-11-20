@@ -1,3 +1,3 @@
 #!/bin/bash
 
-export UPSTREAMABLE_REPOSITORY="https://github.com/milos85vasic/Translator"
+export UPSTREAMABLE_REPOSITORY="git@github.com:milos85vasic/Translator.git"

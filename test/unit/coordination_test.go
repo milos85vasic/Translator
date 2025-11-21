@@ -329,6 +329,16 @@ func TestErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("EmptyText", func(t *testing.T) {
+		// Clear all API keys and disable OAuth
+		os.Unsetenv("OPENAI_API_KEY")
+		os.Unsetenv("ANTHROPIC_API_KEY")
+		os.Unsetenv("ZHIPU_API_KEY")
+		os.Unsetenv("DEEPSEEK_API_KEY")
+		os.Unsetenv("QWEN_API_KEY")
+		os.Unsetenv("OLLAMA_ENABLED")
+		os.Setenv("SKIP_QWEN_OAUTH", "1")
+		defer os.Unsetenv("SKIP_QWEN_OAUTH")
+
 		coordinator := coordination.NewMultiLLMCoordinator(coordination.CoordinatorConfig{
 			SessionID: "test",
 		})
@@ -341,6 +351,16 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	t.Run("NilContext", func(t *testing.T) {
+		// Clear all API keys and disable OAuth
+		os.Unsetenv("OPENAI_API_KEY")
+		os.Unsetenv("ANTHROPIC_API_KEY")
+		os.Unsetenv("ZHIPU_API_KEY")
+		os.Unsetenv("DEEPSEEK_API_KEY")
+		os.Unsetenv("QWEN_API_KEY")
+		os.Unsetenv("OLLAMA_ENABLED")
+		os.Setenv("SKIP_QWEN_OAUTH", "1")
+		defer os.Unsetenv("SKIP_QWEN_OAUTH")
+
 		coordinator := coordination.NewMultiLLMCoordinator(coordination.CoordinatorConfig{
 			SessionID: "test",
 		})
@@ -353,6 +373,16 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	t.Run("ContextCancellation", func(t *testing.T) {
+		// Clear all API keys and disable OAuth
+		os.Unsetenv("OPENAI_API_KEY")
+		os.Unsetenv("ANTHROPIC_API_KEY")
+		os.Unsetenv("ZHIPU_API_KEY")
+		os.Unsetenv("DEEPSEEK_API_KEY")
+		os.Unsetenv("QWEN_API_KEY")
+		os.Unsetenv("OLLAMA_ENABLED")
+		os.Setenv("SKIP_QWEN_OAUTH", "1")
+		defer os.Unsetenv("SKIP_QWEN_OAUTH")
+
 		coordinator := coordination.NewMultiLLMCoordinator(coordination.CoordinatorConfig{
 			SessionID: "test",
 		})

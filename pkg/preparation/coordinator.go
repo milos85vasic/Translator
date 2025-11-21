@@ -185,7 +185,7 @@ func (pc *PreparationCoordinator) performPass(
 	pass := &PreparationPass{
 		PassNumber: passNum,
 		Provider:   provider.GetName(),
-		Model:      "", // TODO: Get model name if available
+		Model:      "", // Model name not available from Translator interface
 		Analysis:   *analysis,
 		Duration:   time.Since(startTime),
 		TokensUsed: estimateTokens(prompt + response),

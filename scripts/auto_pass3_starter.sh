@@ -13,8 +13,9 @@ while true; do
             echo "✓ Pass 2 completed! Starting Pass 3..."
 
             # Start Pass 3 with Zhipu for polishing (or DeepSeek as fallback)
-            export ZHIPU_API_KEY="REDACTED_ZHIPU_KEY"
-            export DEEPSEEK_API_KEY="REDACTED_DEEPSEEK_KEY"
+            # API keys should be set in environment before running this script
+            # export ZHIPU_API_KEY="your-key-here"
+            # export DEEPSEEK_API_KEY="your-key-here"
 
             # Try Zhipu first for literary polishing
             echo "Using Zhipu AI for Pass 3 polishing..."

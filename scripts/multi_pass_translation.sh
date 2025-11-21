@@ -78,7 +78,9 @@ verify_book() {
 pass1_initial_translation() {
     local input_file="$1"
     local basename=$(basename "$input_file" .epub)
-    local output_file="$OUTPUT_DIR/${basename}_sr_pass1.epub"
+    # Use shorter filename to avoid length issues
+    local short_name="${basename:0:30}"
+    local output_file="$OUTPUT_DIR/${short_name}_p1.epub"
     local log_file="$LOGS_DIR/${basename}_pass1.log"
 
     log_info "===== PASS 1: Initial Translation ====="
@@ -109,8 +111,10 @@ pass1_initial_translation() {
 # Pass 2: Verification and Quality Check
 pass2_verification() {
     local input_file="$1"
-    local basename=$(basename "$input_file" _pass1.epub)
-    local output_file="$OUTPUT_DIR/${basename}_pass2.epub"
+    local basename=$(basename "$input_file" _p1.epub)
+    # Use shorter filename to avoid length issues
+    local short_name="${basename:0:30}"
+    local output_file="$OUTPUT_DIR/${short_name}_p2.epub"
     local log_file="$LOGS_DIR/${basename}_pass2.log"
 
     log_info "===== PASS 2: Verification & Quality Check ====="
@@ -142,8 +146,10 @@ pass2_verification() {
 # Pass 3: Polishing and Refinement
 pass3_polishing() {
     local input_file="$1"
-    local basename=$(basename "$input_file" _pass2.epub)
-    local output_file="$OUTPUT_DIR/${basename}_pass3_final.epub"
+    local basename=$(basename "$input_file" _p2.epub)
+    # Use shorter filename to avoid length issues
+    local short_name="${basename:0:30}"
+    local output_file="$OUTPUT_DIR/${short_name}_p3_final.epub"
     local log_file="$LOGS_DIR/${basename}_pass3.log"
 
     log_info "===== PASS 3: Polishing & Refinement ====="

@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"digital.vasic.translator/pkg/ebook"
 	"digital.vasic.translator/pkg/markdown"
+	"digital.vasic.translator/pkg/preparation"
 	"digital.vasic.translator/pkg/translator"
 	"digital.vasic.translator/pkg/translator/llm"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -19,9 +22,11 @@ func main() {
 	outputFile := flag.String("output", "", "Output file (optional, auto-generated if not provided)")
 	outputFormat := flag.String("format", "epub", "Output format (epub, md)")
 	targetLang := flag.String("lang", "sr", "Target language code (default: Serbian)")
-	provider := flag.String("provider", "deepseek", "LLM provider (deepseek, openai, anthropic)")
+	provider := flag.String("provider", "deepseek", "LLM provider (deepseek, openai, anthropic, llamacpp)")
 	model := flag.String("model", "", "LLM model (optional, uses provider default)")
 	keepMarkdown := flag.Bool("keep-md", true, "Keep intermediate markdown files")
+	enablePreparation := flag.Bool("prepare", false, "Enable preparation phase with multi-LLM analysis")
+	preparationPasses := flag.Int("prep-passes", 2, "Number of preparation analysis passes")
 	flag.Parse()
 
 	if *inputFile == "" {
@@ -72,6 +77,9 @@ func main() {
 
 	var stepNum int = 1
 	totalSteps := 4
+	if *enablePreparation {
+		totalSteps++ // Add preparation step
+	}
 	if isMarkdownInput {
 		totalSteps-- // Skip EPUB→MD conversion
 	}
@@ -90,6 +98,80 @@ func main() {
 		stepNum++
 	} else {
 		fmt.Printf("ℹ️  Using markdown input directly: %s\n\n", sourceMD)
+	}
+
+	// Step 1.5: Preparation Phase (if enabled)
+	var prepResult *preparation.PreparationResult
+	if *enablePreparation {
+		fmt.Printf("🔍 Step %d/%d: Content Analysis & Preparation...\n", stepNum, totalSteps)
+		stepNum++
+
+		// Parse the source book (either EPUB or reconstruct from markdown)
+		var book *ebook.Book
+		if !isMarkdownInput {
+			parser := ebook.NewUniversalParser()
+			var err error
+			book, err = parser.Parse(*inputFile)
+			if err != nil {
+				log.Fatalf("Failed to parse book for preparation: %v", err)
+			}
+		} else {
+			// Create minimal book structure from markdown for preparation
+			book = &ebook.Book{
+				Metadata: ebook.Metadata{
+					Language: "ru", // Assume Russian source
+				},
+				Chapters: []ebook.Chapter{
+					{
+						Title: "Content",
+						// Would need to read markdown content here
+					},
+				},
+			}
+		}
+
+		// Configure preparation with multi-LLM analysis
+		prepConfig := preparation.PreparationConfig{
+			PassCount:           *preparationPasses,
+			Providers:           []string{*provider}, // Use same provider for now
+			AnalyzeContentType:  true,
+			AnalyzeCharacters:   true,
+			AnalyzeTerminology:  true,
+			AnalyzeCulture:      true,
+			AnalyzeChapters:     true,
+			DetailLevel:         "comprehensive",
+			SourceLanguage:      "ru",
+			TargetLanguage:      *targetLang,
+		}
+
+		prepCoordinator, err := preparation.NewPreparationCoordinator(prepConfig)
+		if err != nil {
+			log.Fatalf("Failed to create preparation coordinator: %v", err)
+		}
+
+		ctx := context.Background()
+		prepResult, err = prepCoordinator.PrepareBook(ctx, book)
+		if err != nil {
+			log.Printf("⚠️  Warning: Preparation failed: %v", err)
+			fmt.Println("Continuing without preparation analysis...")
+		} else {
+			// Save preparation results
+			prepJSON := filepath.Join("Books", outputBase+"_preparation.json")
+			prepData, _ := json.MarshalIndent(prepResult, "", "  ")
+			if err := os.WriteFile(prepJSON, prepData, 0644); err != nil {
+				log.Printf("Warning: Failed to save preparation results: %v", err)
+			} else {
+				fmt.Printf("✓ Preparation complete (%d passes, %.2fs)\n",
+					prepResult.PassCount, prepResult.TotalDuration.Seconds())
+				fmt.Printf("  Analysis saved: %s\n", prepJSON)
+				fmt.Printf("  Content type: %s\n", prepResult.FinalAnalysis.ContentType)
+				fmt.Printf("  Genre: %s\n", prepResult.FinalAnalysis.Genre)
+				fmt.Printf("  Characters: %d identified\n", len(prepResult.FinalAnalysis.Characters))
+				fmt.Printf("  Untranslatable terms: %d identified\n", len(prepResult.FinalAnalysis.UntranslatableTerms))
+				fmt.Printf("  Footnote guidance: %d items\n", len(prepResult.FinalAnalysis.FootnoteGuidance))
+			}
+		}
+		fmt.Println()
 	}
 
 	// Step 2: Create translator
@@ -180,11 +262,16 @@ func createTranslator(provider, model, targetLang string) (translator.Translator
 	case "zhipu":
 		apiKey = os.Getenv("ZHIPU_API_KEY")
 		defaultModel = "glm-4"
+	case "llamacpp":
+		// llamacpp doesn't need API key (local inference)
+		apiKey = ""
+		defaultModel = "" // Auto-select based on hardware
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", provider)
 	}
 
-	if apiKey == "" {
+	// Only require API key for cloud providers (not llamacpp)
+	if apiKey == "" && provider != "llamacpp" {
 		return nil, fmt.Errorf("API key not set for provider %s (check environment variables)", provider)
 	}
 

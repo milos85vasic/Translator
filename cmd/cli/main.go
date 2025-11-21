@@ -416,7 +416,7 @@ Options:
   -detect                 Detect source language and exit
 
   -p, -provider <name>    Translation provider (dictionary, openai, anthropic,
-                          zhipu, deepseek, qwen, ollama) [default: dictionary]
+                          zhipu, deepseek, qwen, ollama, llamacpp) [default: dictionary]
   -model <name>           LLM model name (e.g., gpt-4, claude-3-sonnet)
   -api-key <key>          API key for LLM provider
   -base-url <url>         Base URL for LLM provider

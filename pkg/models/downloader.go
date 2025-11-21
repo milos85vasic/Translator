@@ -105,8 +105,25 @@ func (d *Downloader) downloadWithProgress(url, destPath string) error {
 	}
 	defer out.Close()
 
+	// Create request with Hugging Face authentication if available
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	// Add Hugging Face token if available
+	// Check both HF_TOKEN and HUGGINGFACE_TOKEN environment variables
+	hfToken := os.Getenv("HF_TOKEN")
+	if hfToken == "" {
+		hfToken = os.Getenv("HUGGINGFACE_TOKEN")
+	}
+	if hfToken != "" && strings.Contains(url, "huggingface.co") {
+		req.Header.Set("Authorization", "Bearer "+hfToken)
+		fmt.Printf("[DOWNLOADER] Using Hugging Face authentication\n")
+	}
+
 	// Get the data
-	resp, err := d.client.Get(url)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -114,6 +131,10 @@ func (d *Downloader) downloadWithProgress(url, destPath string) error {
 
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
+		// Provide helpful error message for authentication failures
+		if resp.StatusCode == http.StatusUnauthorized && strings.Contains(url, "huggingface.co") {
+			return fmt.Errorf("bad status: %s - Hugging Face token required. Set HF_TOKEN environment variable with your token from https://huggingface.co/settings/tokens", resp.Status)
+		}
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 

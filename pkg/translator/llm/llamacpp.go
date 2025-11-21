@@ -65,8 +65,12 @@ func NewLlamaCppClient(config translator.TranslationConfig) (*LlamaCppClient, er
 		}
 	} else {
 		// Auto-select best model for hardware and languages
+		// Use 60% of total RAM for model selection (more realistic for dedicated model loading)
+		// AvailableRAM only shows currently free memory, which is too conservative
+		ramForModel := uint64(float64(caps.TotalRAM) * 0.6)
+
 		modelInfo, err = registry.FindBestModel(
-			caps.AvailableRAM,
+			ramForModel,
 			[]string{"ru", "sr"}, // Russian to Serbian translation
 			caps.HasGPU,
 		)
@@ -75,6 +79,9 @@ func NewLlamaCppClient(config translator.TranslationConfig) (*LlamaCppClient, er
 		}
 
 		fmt.Fprintf(os.Stderr, "[LLAMACPP] Auto-selected model: %s\n", modelInfo.Name)
+		fmt.Fprintf(os.Stderr, "[LLAMACPP] RAM available for model: %.1f GB (60%% of %.1f GB total)\n",
+			float64(ramForModel)/(1024*1024*1024),
+			float64(caps.TotalRAM)/(1024*1024*1024))
 	}
 
 	// Check if model is already downloaded

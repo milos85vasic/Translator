@@ -6,6 +6,7 @@ import (
 	"digital.vasic.translator/internal/cache"
 	"digital.vasic.translator/internal/config"
 	"digital.vasic.translator/pkg/api"
+	"digital.vasic.translator/pkg/coordination"
 	"digital.vasic.translator/pkg/distributed"
 	"digital.vasic.translator/pkg/events"
 	"digital.vasic.translator/pkg/security"
@@ -63,10 +64,22 @@ func main() {
 	rateLimiter := security.NewRateLimiter(cfg.Security.RateLimitRPS, cfg.Security.RateLimitBurst)
 	wsHub := websocket.NewHub(eventBus)
 
+	// Initialize local coordinator
+	localCoordinator := coordination.NewMultiLLMCoordinator(coordination.CoordinatorConfig{
+		EventBus: eventBus,
+	})
+
 	// Initialize distributed manager if enabled
 	var distributedManager interface{}
 	if cfg.Distributed.Enabled {
 		distributedManager = distributed.NewDistributedManager(cfg, eventBus)
+		// Initialize with local coordinator
+		if dm, ok := distributedManager.(*distributed.DistributedManager); ok {
+			if err := dm.Initialize(localCoordinator); err != nil {
+				log.Printf("Failed to initialize distributed manager: %v", err)
+				distributedManager = nil
+			}
+		}
 	}
 
 	// Start WebSocket hub

@@ -152,12 +152,50 @@ func (h *Handler) translateText(c *gin.Context) {
 	// Generate session ID
 	sessionID := uuid.New().String()
 
-	// Translate
+	// Translate - use distributed coordinator if available
 	ctx := context.Background()
-	translated, err := trans.TranslateWithProgress(ctx, req.Text, req.Context, h.eventBus, sessionID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	var translated string
+
+	if h.distributedManager != nil {
+		// Try distributed translation first
+		if dm, ok := h.distributedManager.(*distributed.DistributedManager); ok {
+			distributedResult, distributedErr := dm.TranslateDistributed(ctx, req.Text, req.Context)
+			if distributedErr == nil {
+				translated = distributedResult
+			} else {
+				// Fallback to local translation
+				h.eventBus.Publish(events.Event{
+					Type:      "distributed_fallback",
+					SessionID: sessionID,
+					Message:   "Distributed translation failed, using local translator",
+					Data: map[string]interface{}{
+						"error": distributedErr.Error(),
+					},
+				})
+				localResult, localErr := trans.TranslateWithProgress(ctx, req.Text, req.Context, h.eventBus, sessionID)
+				if localErr != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": localErr.Error()})
+					return
+				}
+				translated = localResult
+			}
+		} else {
+			// Type assertion failed, use local translator
+			localResult, localErr := trans.TranslateWithProgress(ctx, req.Text, req.Context, h.eventBus, sessionID)
+			if localErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": localErr.Error()})
+				return
+			}
+			translated = localResult
+		}
+	} else {
+		// Use local translator
+		localResult, localErr := trans.TranslateWithProgress(ctx, req.Text, req.Context, h.eventBus, sessionID)
+		if localErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": localErr.Error()})
+			return
+		}
+		translated = localResult
 	}
 
 	// Convert script if requested

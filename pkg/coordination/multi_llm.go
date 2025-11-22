@@ -19,7 +19,7 @@ type LLMInstance struct {
 	Translator translator.Translator
 	Provider   string
 	Model      string
-	Priority   int       // Higher priority = more instances (10=API key, 5=OAuth, 1=free)
+	Priority   int // Higher priority = more instances (10=API key, 5=OAuth, 1=free)
 	Available  bool
 	LastUsed   time.Time
 	mu         sync.Mutex
@@ -27,21 +27,27 @@ type LLMInstance struct {
 
 // MultiLLMCoordinator manages multiple LLM instances for coordinated translation
 type MultiLLMCoordinator struct {
-	instances       []*LLMInstance
-	currentIndex    int
-	mu              sync.RWMutex
-	maxRetries      int
-	retryDelay      time.Duration
-	eventBus        *events.EventBus
-	sessionID       string
+	instances         []*LLMInstance
+	currentIndex      int
+	mu                sync.RWMutex
+	maxRetries        int
+	retryDelay        time.Duration
+	eventBus          *events.EventBus
+	sessionID         string
+	disableLocalLLMs  bool
+	preferDistributed bool
+	distributedCoord  interface{} // *distributed.DistributedCoordinator
 }
 
 // CoordinatorConfig holds configuration for the coordinator
 type CoordinatorConfig struct {
-	MaxRetries  int
-	RetryDelay  time.Duration
-	EventBus    *events.EventBus
-	SessionID   string
+	MaxRetries        int
+	RetryDelay        time.Duration
+	EventBus          *events.EventBus
+	SessionID         string
+	DisableLocalLLMs  bool        // When true, only use distributed workers, no local LLM providers
+	PreferDistributed bool        // When true, prefer distributed workers over local LLMs
+	DistributedCoord  interface{} // Optional distributed coordinator for remote instances
 }
 
 // NewMultiLLMCoordinator creates a new multi-LLM coordinator
@@ -54,12 +60,15 @@ func NewMultiLLMCoordinator(config CoordinatorConfig) *MultiLLMCoordinator {
 	}
 
 	coordinator := &MultiLLMCoordinator{
-		instances:    make([]*LLMInstance, 0),
-		currentIndex: 0,
-		maxRetries:   config.MaxRetries,
-		retryDelay:   config.RetryDelay,
-		eventBus:     config.EventBus,
-		sessionID:    config.SessionID,
+		instances:         make([]*LLMInstance, 0),
+		currentIndex:      0,
+		maxRetries:        config.MaxRetries,
+		retryDelay:        config.RetryDelay,
+		eventBus:          config.EventBus,
+		sessionID:         config.SessionID,
+		disableLocalLLMs:  config.DisableLocalLLMs,
+		preferDistributed: config.PreferDistributed,
+		distributedCoord:  config.DistributedCoord,
 	}
 
 	// Auto-discover and initialize LLM instances
@@ -74,7 +83,11 @@ func (c *MultiLLMCoordinator) initializeLLMInstances() {
 	providers := c.discoverProviders()
 
 	if len(providers) == 0 {
-		c.emitWarning("No LLM providers configured with API keys")
+		if c.disableLocalLLMs {
+			c.emitWarning("No LLM providers configured with API keys and local LLMs are disabled - distributed workers expected")
+		} else {
+			c.emitWarning("No LLM providers configured with API keys")
+		}
 		return
 	}
 
@@ -97,12 +110,22 @@ func (c *MultiLLMCoordinator) initializeLLMInstances() {
 		totalInstances += getInstanceCount(priority)
 	}
 
+	initMessage := fmt.Sprintf("Initializing %d LLM instances across %d providers", totalInstances, len(providers))
+	if c.disableLocalLLMs {
+		initMessage += " (local LLMs disabled)"
+	}
+	if c.preferDistributed {
+		initMessage += " (preferring distributed workers)"
+	}
+
 	c.emitEvent(events.Event{
 		Type:      "multi_llm_init",
 		SessionID: c.sessionID,
-		Message:   fmt.Sprintf("Initializing %d LLM instances across %d providers (prioritizing API key providers)", totalInstances, len(providers)),
+		Message:   initMessage,
 		Data: map[string]interface{}{
-			"providers": providers,
+			"providers":          providers,
+			"disable_local":      c.disableLocalLLMs,
+			"prefer_distributed": c.preferDistributed,
 		},
 	})
 
@@ -228,7 +251,8 @@ func (c *MultiLLMCoordinator) discoverProviders() map[string]map[string]interfac
 	}
 
 	// Check Ollama (local, no API key needed - lowest priority)
-	if os.Getenv("OLLAMA_ENABLED") == "true" {
+	// Skip local LLMs if disabled
+	if !c.disableLocalLLMs && os.Getenv("OLLAMA_ENABLED") == "true" {
 		providers["ollama"] = map[string]interface{}{
 			"api_key":  "",
 			"model":    getEnvOrDefault("OLLAMA_MODEL", "llama3:8b"),

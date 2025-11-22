@@ -23,21 +23,23 @@ const version = "2.0.0"
 func main() {
 	// Define CLI flags
 	var (
-		inputFile      string
-		outputFile     string
-		outputFormat   string
-		provider       string
-		model          string
-		apiKey         string
-		baseURL        string
-		scriptType     string
-		locale         string
-		targetLanguage string
-		sourceLanguage string
-		showVersion    bool
-		showHelp       bool
-		createConfig   string
-		detectLang     bool
+		inputFile         string
+		outputFile        string
+		outputFormat      string
+		provider          string
+		model             string
+		apiKey            string
+		baseURL           string
+		scriptType        string
+		locale            string
+		targetLanguage    string
+		sourceLanguage    string
+		showVersion       bool
+		showHelp          bool
+		createConfig      string
+		detectLang        bool
+		disableLocalLLMs  bool
+		preferDistributed bool
 	)
 
 	flag.StringVar(&inputFile, "input", "", "Input ebook file (any format: FB2, EPUB, TXT, HTML)")
@@ -61,6 +63,8 @@ func main() {
 	flag.BoolVar(&showHelp, "help", false, "Show help")
 	flag.BoolVar(&showHelp, "h", false, "Show help (shorthand)")
 	flag.StringVar(&createConfig, "create-config", "", "Create config file template")
+	flag.BoolVar(&disableLocalLLMs, "disable-local-llms", false, "Disable local LLM providers, use only distributed workers")
+	flag.BoolVar(&preferDistributed, "prefer-distributed", false, "Prefer distributed workers over local LLMs when available")
 
 	flag.Parse()
 
@@ -185,6 +189,8 @@ func main() {
 		sourceLang,
 		targetLang,
 		eventBus,
+		disableLocalLLMs,
+		preferDistributed,
 	); err != nil {
 		fmt.Fprintf(os.Stderr, "Translation failed: %v\n", err)
 		os.Exit(1)
@@ -200,6 +206,7 @@ func translateEbook(
 	outputFile, outputFormat, providerName, model, apiKey, baseURL, scriptType string,
 	sourceLang, targetLang language.Language,
 	eventBus *events.EventBus,
+	disableLocalLLMs, preferDistributed bool,
 ) error {
 	ctx := context.Background()
 
@@ -220,7 +227,7 @@ func translateEbook(
 
 	// Try multi-LLM first if provider is "multi-llm" or not specified
 	if providerName == "multi-llm" || providerName == "" {
-		multiTrans, multiErr := coordination.NewMultiLLMTranslatorWrapper(config, eventBus, sessionID)
+		multiTrans, multiErr := coordination.NewMultiLLMTranslatorWrapperWithConfig(config, eventBus, sessionID, disableLocalLLMs, preferDistributed)
 		if multiErr == nil {
 			trans = multiTrans
 			fmt.Printf("Using translator: multi-llm-coordinator (%d instances)\n\n", multiTrans.Coordinator.GetInstanceCount())
@@ -424,9 +431,11 @@ Options:
   -script <type>          Output script for Serbian (cyrillic, latin)
                           [default: cyrillic]
 
-  -create-config <file>   Create a config file template
-  -v, -version            Show version
-  -h, -help               Show this help
+   -create-config <file>   Create a config file template
+   -disable-local-llms     Disable local LLM providers (Ollama), use only API providers
+   -prefer-distributed     Prefer distributed workers over local LLMs (when available)
+   -v, -version            Show version
+   -h, -help               Show this help
 
 Supported Input Formats:
   FB2, EPUB, TXT, HTML

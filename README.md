@@ -101,6 +101,14 @@ export OPENAI_API_KEY="your-key"
 # Install llama.cpp: brew install llama.cpp
 ./build/translator -input book.epub -locale sr -provider llamacpp
 
+# Multi-LLM coordinator with API providers only (skip local LLMs)
+export OPENAI_API_KEY="your-key"
+export DEEPSEEK_API_KEY="your-key"
+./build/translator -input book.epub -provider multi-llm -disable-local-llms
+
+# Multi-LLM coordinator preferring distributed workers
+./build/translator -input book.epub -provider multi-llm -prefer-distributed
+
 # Version
 ./build/translator -version
 # Universal Ebook Translator v2.0.0

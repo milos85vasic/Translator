@@ -498,7 +498,68 @@ func TestEventEmission(t *testing.T) {
 		})
 
 		if len(initEvents) == 0 {
-			t.Log("No init events (expected if instance creation failed)")
+			t.Error("Expected init events to be emitted")
+		}
+	})
+
+	t.Run("DisableLocalLLMsFlag", func(t *testing.T) {
+		// Set API keys and enable Ollama
+		os.Setenv("DEEPSEEK_API_KEY", "sk-test")
+		os.Setenv("OLLAMA_ENABLED", "true")
+		defer func() {
+			os.Unsetenv("DEEPSEEK_API_KEY")
+			os.Unsetenv("OLLAMA_ENABLED")
+		}()
+
+		eventBus := events.NewEventBus()
+		var initMessage string
+
+		eventBus.SubscribeAll(func(event events.Event) {
+			if event.Type == "multi_llm_init" {
+				initMessage = event.Message
+			}
+		})
+
+		// Test with DisableLocalLLMs = true
+		coordinator := coordination.NewMultiLLMCoordinator(coordination.CoordinatorConfig{
+			EventBus:         eventBus,
+			SessionID:        "test",
+			DisableLocalLLMs: true,
+		})
+
+		// Should not include Ollama instances
+		// DeepSeek should create instances, Ollama should be skipped
+		if coordinator.GetInstanceCount() == 0 {
+			t.Error("Expected instances with API key, got 0")
+		}
+
+		if !strings.Contains(initMessage, "local LLMs disabled") {
+			t.Errorf("Expected init message to contain 'local LLMs disabled', got: %s", initMessage)
+		}
+	})
+
+	t.Run("PreferDistributedFlag", func(t *testing.T) {
+		os.Setenv("DEEPSEEK_API_KEY", "sk-test")
+		defer os.Unsetenv("DEEPSEEK_API_KEY")
+
+		eventBus := events.NewEventBus()
+		var initMessage string
+
+		eventBus.SubscribeAll(func(event events.Event) {
+			if event.Type == "multi_llm_init" {
+				initMessage = event.Message
+			}
+		})
+
+		// Test with PreferDistributed = true
+		_ = coordination.NewMultiLLMCoordinator(coordination.CoordinatorConfig{
+			EventBus:          eventBus,
+			SessionID:         "test",
+			PreferDistributed: true,
+		})
+
+		if !strings.Contains(initMessage, "preferring distributed workers") {
+			t.Errorf("Expected init message to contain 'preferring distributed workers', got: %s", initMessage)
 		}
 	})
 

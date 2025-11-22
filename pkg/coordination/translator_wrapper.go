@@ -14,11 +14,19 @@ type MultiLLMTranslatorWrapper struct {
 
 // NewMultiLLMTranslatorWrapper creates a new wrapper
 func NewMultiLLMTranslatorWrapper(config translator.TranslationConfig, eventBus *events.EventBus, sessionID string) (*MultiLLMTranslatorWrapper, error) {
+	return NewMultiLLMTranslatorWrapperWithConfig(config, eventBus, sessionID, false, false)
+}
+
+// NewMultiLLMTranslatorWrapperWithConfig creates a new wrapper with configuration options
+func NewMultiLLMTranslatorWrapperWithConfig(config translator.TranslationConfig, eventBus *events.EventBus, sessionID string, disableLocalLLMs bool, preferDistributed bool) (*MultiLLMTranslatorWrapper, error) {
 	coordinator := NewMultiLLMCoordinator(CoordinatorConfig{
-		MaxRetries: 3,
-		RetryDelay: 0, // No delay between retries with different instances
-		EventBus:   eventBus,
-		SessionID:  sessionID,
+		MaxRetries:        3,
+		RetryDelay:        0, // No delay between retries with different instances
+		EventBus:          eventBus,
+		SessionID:         sessionID,
+		DisableLocalLLMs:  disableLocalLLMs,
+		PreferDistributed: preferDistributed,
+		DistributedCoord:  nil, // CLI doesn't use distributed coordinator
 	})
 
 	if coordinator.GetInstanceCount() == 0 {

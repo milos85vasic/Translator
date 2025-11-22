@@ -2,6 +2,7 @@ package distributed
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -49,13 +50,16 @@ type PairingManager struct {
 func NewPairingManager(sshPool *SSHPool, eventBus *events.EventBus) *PairingManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create HTTP client with reasonable timeouts
+	// Create HTTP client with reasonable timeouts and TLS config for self-signed certs
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			MaxIdleConns:        10,
 			MaxIdleConnsPerHost: 2,
 			IdleConnTimeout:     90 * time.Second,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // Accept self-signed certificates
+			},
 		},
 	}
 

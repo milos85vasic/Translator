@@ -2,6 +2,7 @@ package distributed
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -79,10 +80,18 @@ func (dc *DistributedCoordinator) DiscoverRemoteInstances(ctx context.Context) e
 			continue
 		}
 
-		// Create instances based on provider priorities
+		// Create instances based on provider capabilities
 		for provider, config := range providers {
-			priority := config["priority"].(int)
-			model := config["model"].(string)
+			// Determine priority based on provider type
+			priority := dc.getPriorityForProvider(provider)
+
+			// Get first model from models array, or use provider name as fallback
+			model := provider // default
+			if models, ok := config["models"].([]interface{}); ok && len(models) > 0 {
+				if firstModel, ok := models[0].(string); ok {
+					model = firstModel
+				}
+			}
 
 			// Create multiple instances based on priority
 			instanceCount := dc.getInstanceCountForPriority(priority, service.Capabilities.MaxConcurrent)
@@ -126,7 +135,17 @@ func (dc *DistributedCoordinator) queryRemoteProviders(ctx context.Context, serv
 		return nil, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	// Use HTTP client that accepts self-signed certificates
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +167,19 @@ func (dc *DistributedCoordinator) queryRemoteProviders(ctx context.Context, serv
 
 	providers := make(map[string]map[string]interface{})
 
-	// Extract providers from response
-	if providersList, ok := response["providers"].(map[string]interface{}); ok {
-		for provider, config := range providersList {
+	// Extract providers from response - handle both array and map formats
+	if providersList, ok := response["providers"].([]interface{}); ok {
+		// Array format: [{"name": "ollama", "models": [...], ...}, ...]
+		for _, item := range providersList {
+			if providerMap, ok := item.(map[string]interface{}); ok {
+				if name, ok := providerMap["name"].(string); ok {
+					providers[name] = providerMap
+				}
+			}
+		}
+	} else if providersMap, ok := response["providers"].(map[string]interface{}); ok {
+		// Map format: {"ollama": {...}, ...}
+		for provider, config := range providersMap {
 			if configMap, ok := config.(map[string]interface{}); ok {
 				providers[provider] = configMap
 			}
@@ -158,6 +187,20 @@ func (dc *DistributedCoordinator) queryRemoteProviders(ctx context.Context, serv
 	}
 
 	return providers, nil
+}
+
+// getPriorityForProvider determines priority based on provider type
+func (dc *DistributedCoordinator) getPriorityForProvider(provider string) int {
+	switch provider {
+	case "openai", "anthropic", "zhipu", "deepseek":
+		return 10 // API key providers - highest priority
+	case "ollama":
+		return 5 // Local LLM providers - medium priority
+	case "dictionary":
+		return 1 // Basic providers - lowest priority
+	default:
+		return 1 // Default priority
+	}
 }
 
 // getInstanceCountForPriority determines how many instances to create based on priority and max concurrent
@@ -355,7 +398,17 @@ func (dc *DistributedCoordinator) translateWithRemoteInstance(
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	// Use HTTP client that accepts self-signed certificates
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}

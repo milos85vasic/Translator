@@ -20,8 +20,9 @@ type RemoteService struct {
 	Host         string              `json:"host"`
 	Port         int                 `json:"port"`
 	Protocol     string              `json:"protocol"` // http, https, http3
-	Status       string              `json:"status"`   // online, offline, paired
+	Status       string              `json:"status"`   // online, offline, paired, updating, outdated
 	Capabilities ServiceCapabilities `json:"capabilities"`
+	Version      VersionInfo         `json:"version"`
 	LastSeen     time.Time           `json:"last_seen"`
 	PairedAt     *time.Time          `json:"paired_at,omitempty"`
 }
@@ -33,6 +34,16 @@ type ServiceCapabilities struct {
 	SupportsBatch     bool     `json:"supports_batch"`
 	SupportsWebSocket bool     `json:"supports_websocket"`
 	LocalLLMs         []string `json:"local_llms,omitempty"` // ollama, llamacpp models
+}
+
+// VersionInfo represents version information for codebase and components
+type VersionInfo struct {
+	CodebaseVersion string            `json:"codebase_version"`
+	BuildTime       string            `json:"build_time"`
+	GitCommit       string            `json:"git_commit"`
+	GoVersion       string            `json:"go_version"`
+	Components      map[string]string `json:"components"` // component -> version
+	LastUpdated     time.Time         `json:"last_updated"`
 }
 
 // PairingManager manages pairing with remote services

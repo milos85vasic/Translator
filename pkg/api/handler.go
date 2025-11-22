@@ -15,7 +15,10 @@ import (
 	"digital.vasic.translator/pkg/websocket"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -74,6 +77,7 @@ func (h *Handler) RegisterRoutes(router *gin.Engine) {
 
 		// Status and info
 		v1.GET("/status/:session_id", h.getStatus)
+		v1.GET("/version", h.getVersion)
 		v1.GET("/providers", h.listProviders)
 		v1.GET("/stats", h.getStats)
 
@@ -84,6 +88,10 @@ func (h *Handler) RegisterRoutes(router *gin.Engine) {
 			v1.POST("/distributed/workers/:worker_id/pair", h.pairWorker)
 			v1.DELETE("/distributed/workers/:worker_id/pair", h.unpairWorker)
 			v1.POST("/distributed/translate", h.translateDistributed)
+
+			// Update endpoints for workers
+			v1.POST("/update/upload", h.uploadUpdate)
+			v1.POST("/update/apply", h.applyUpdate)
 		}
 
 		// Authentication (if enabled)
@@ -444,6 +452,94 @@ func (h *Handler) listProviders(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"providers": providers,
 	})
+}
+
+// getVersion returns version information
+func (h *Handler) getVersion(c *gin.Context) {
+	version := distributed.VersionInfo{
+		CodebaseVersion: getCodebaseVersion(),
+		BuildTime:       getBuildTime(),
+		GitCommit:       getGitCommit(),
+		GoVersion:       getGoVersion(),
+		Components:      make(map[string]string),
+		LastUpdated:     time.Now(),
+	}
+
+	// Add component versions
+	version.Components["translator"] = version.CodebaseVersion
+	version.Components["api"] = "1.0.0"
+	version.Components["distributed"] = "1.0.0"
+	version.Components["deployment"] = "1.0.0"
+
+	c.JSON(http.StatusOK, version)
+}
+
+// Helper functions for version information
+
+// getCodebaseVersion returns the current codebase version
+func getCodebaseVersion() string {
+	// Try to read from version file first
+	if version, err := readVersionFile("VERSION"); err == nil {
+		return strings.TrimSpace(version)
+	}
+
+	// Try git describe
+	if version, err := runCommand("git", "describe", "--tags", "--abbrev=0"); err == nil {
+		return strings.TrimSpace(version)
+	}
+
+	// Try git rev-parse
+	if commit, err := runCommand("git", "rev-parse", "--short", "HEAD"); err == nil {
+		return fmt.Sprintf("dev-%s", strings.TrimSpace(commit))
+	}
+
+	return "unknown"
+}
+
+// getBuildTime returns the build timestamp
+func getBuildTime() string {
+	if buildTime, err := runCommand("date", "-u", "+%Y-%m-%dT%H:%M:%SZ"); err == nil {
+		return strings.TrimSpace(buildTime)
+	}
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// getGitCommit returns the current git commit hash
+func getGitCommit() string {
+	if commit, err := runCommand("git", "rev-parse", "HEAD"); err == nil {
+		return strings.TrimSpace(commit)
+	}
+	return "unknown"
+}
+
+// getGoVersion returns the Go version used to build
+func getGoVersion() string {
+	if version, err := runCommand("go", "version"); err == nil {
+		parts := strings.Split(version, " ")
+		if len(parts) >= 3 {
+			return parts[2]
+		}
+	}
+	return "unknown"
+}
+
+// readVersionFile reads version from a file
+func readVersionFile(filename string) (string, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// runCommand executes a shell command and returns its output
+func runCommand(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
 }
 
 // getStats returns API statistics
@@ -877,4 +973,113 @@ func (h *Handler) translateDistributed(c *gin.Context) {
 		"translated_text": translated,
 		"session_id":      sessionID,
 	})
+}
+
+// uploadUpdate handles update package uploads
+func (h *Handler) uploadUpdate(c *gin.Context) {
+	// Get the uploaded file
+	file, err := c.FormFile("update_package")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No update package provided"})
+		return
+	}
+
+	// Get version from header
+	version := c.GetHeader("X-Update-Version")
+	if version == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Update version not specified"})
+		return
+	}
+
+	// Save the update package
+	updateDir := "/tmp/translator-updates"
+	if err := os.MkdirAll(updateDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create update directory"})
+		return
+	}
+
+	updatePath := filepath.Join(updateDir, fmt.Sprintf("update-%s.tar.gz", version))
+	if err := c.SaveUploadedFile(file, updatePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save update package"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Update package uploaded successfully",
+		"version": version,
+		"path":    updatePath,
+	})
+}
+
+// applyUpdate applies a previously uploaded update
+func (h *Handler) applyUpdate(c *gin.Context) {
+	// Get version from header
+	version := c.GetHeader("X-Update-Version")
+	if version == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Update version not specified"})
+		return
+	}
+
+	// For security, this should be a very controlled process
+	// In a real implementation, you'd want extensive validation
+
+	updatePath := filepath.Join("/tmp/translator-updates", fmt.Sprintf("update-%s.tar.gz", version))
+
+	// Check if update package exists
+	if _, err := os.Stat(updatePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Update package not found"})
+		return
+	}
+
+	// Extract and apply the update
+	// This is a simplified version - in production you'd want rollback capabilities
+	if err := applyUpdatePackage(updatePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to apply update: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Update applied successfully",
+		"version": version,
+	})
+}
+
+// applyUpdatePackage extracts and applies an update package
+func applyUpdatePackage(updatePath string) error {
+	// Create backup of current binary
+	backupPath := "/tmp/translator-server.backup"
+	if _, err := runCommand("cp", "/usr/local/bin/translator-server", backupPath); err != nil {
+		return fmt.Errorf("failed to create backup: %v", err)
+	}
+
+	// Extract update package
+	extractDir := "/tmp/translator-update-extract"
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		return fmt.Errorf("failed to create extract directory: %v", err)
+	}
+
+	if _, err := runCommand("tar", "-xzf", updatePath, "-C", extractDir); err != nil {
+		return fmt.Errorf("failed to extract update package: %v", err)
+	}
+
+	// Find and install new binary
+	newBinary := filepath.Join(extractDir, "translator-server")
+	if _, err := os.Stat(newBinary); os.IsNotExist(err) {
+		return fmt.Errorf("new binary not found in update package")
+	}
+
+	// Install new binary
+	if _, err := runCommand("cp", newBinary, "/usr/local/bin/translator-server"); err != nil {
+		return fmt.Errorf("failed to install new binary: %v", err)
+	}
+
+	// Make sure it's executable
+	if _, err := runCommand("chmod", "+x", "/usr/local/bin/translator-server"); err != nil {
+		return fmt.Errorf("failed to make binary executable: %v", err)
+	}
+
+	// Clean up
+	os.RemoveAll(extractDir)
+
+	return nil
 }

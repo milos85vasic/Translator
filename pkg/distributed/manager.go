@@ -26,6 +26,7 @@ type DistributedManager struct {
 	pairingManager   *PairingManager
 	distributedCoord *DistributedCoordinator
 	fallbackManager  *FallbackManager
+	versionManager   *VersionManager
 	eventBus         *events.EventBus
 	mu               sync.RWMutex
 	initialized      bool
@@ -36,12 +37,15 @@ func NewDistributedManager(cfg *config.Config, eventBus *events.EventBus, apiLog
 	sshPool := NewSSHPool()
 	pairingManager := NewPairingManager(sshPool, eventBus)
 
+	// Create version manager
+	versionManager := NewVersionManager(eventBus)
+
 	// Create fallback manager with default config
 	fallbackConfig := DefaultFallbackConfig()
 	fallbackManager := NewFallbackManager(fallbackConfig, nil, eventBus, &defaultLogger{})
 
 	// Create distributed coordinator (will be initialized with local coordinator later)
-	distributedCoord := NewDistributedCoordinator(nil, sshPool, pairingManager, fallbackManager, eventBus, apiLogger)
+	distributedCoord := NewDistributedCoordinator(nil, sshPool, pairingManager, fallbackManager, versionManager, eventBus, apiLogger)
 
 	return &DistributedManager{
 		config:           cfg,
@@ -49,6 +53,7 @@ func NewDistributedManager(cfg *config.Config, eventBus *events.EventBus, apiLog
 		pairingManager:   pairingManager,
 		distributedCoord: distributedCoord,
 		fallbackManager:  fallbackManager,
+		versionManager:   versionManager,
 		eventBus:         eventBus,
 		initialized:      false,
 	}
@@ -152,6 +157,11 @@ func (dm *DistributedManager) discoverAndPairWorker(ctx context.Context, workerI
 		return fmt.Errorf("failed to discover service: %w", err)
 	}
 
+	// Check worker version and update if necessary
+	if err := dm.ensureWorkerVersion(ctx, service); err != nil {
+		return fmt.Errorf("failed to ensure worker version: %w", err)
+	}
+
 	// Pair with service
 	if err := dm.pairingManager.PairWithService(workerID); err != nil {
 		return fmt.Errorf("failed to pair with service: %w", err)
@@ -160,14 +170,46 @@ func (dm *DistributedManager) discoverAndPairWorker(ctx context.Context, workerI
 	dm.emitEvent(events.Event{
 		Type:      "distributed_worker_discovered",
 		SessionID: "system",
-		Message:   fmt.Sprintf("Discovered and paired with worker %s (%s)", workerID, service.Name),
+		Message:   fmt.Sprintf("Discovered and paired with worker %s (%s) v%s", workerID, service.Name, service.Version.CodebaseVersion),
 		Data: map[string]interface{}{
 			"worker_id":    workerID,
 			"worker_name":  service.Name,
 			"host":         service.Host,
 			"capabilities": service.Capabilities,
+			"version":      service.Version.CodebaseVersion,
 		},
 	})
+
+	return nil
+}
+
+// ensureWorkerVersion ensures a worker is running the correct version
+func (dm *DistributedManager) ensureWorkerVersion(ctx context.Context, service *RemoteService) error {
+	// Check if worker version is up to date
+	upToDate, err := dm.versionManager.CheckWorkerVersion(ctx, service)
+	if err != nil {
+		return fmt.Errorf("version check failed: %w", err)
+	}
+
+	if !upToDate {
+		dm.emitWarning(fmt.Sprintf("Worker %s is outdated (current: %s, required: %s). Updating...",
+			service.WorkerID, service.Version.CodebaseVersion, dm.versionManager.GetLocalVersion().CodebaseVersion))
+
+		// Update the worker
+		if err := dm.versionManager.UpdateWorker(ctx, service); err != nil {
+			return fmt.Errorf("worker update failed: %w", err)
+		}
+
+		dm.emitEvent(events.Event{
+			Type:      "distributed_worker_updated",
+			SessionID: "system",
+			Message:   fmt.Sprintf("Successfully updated worker %s to version %s", service.WorkerID, dm.versionManager.GetLocalVersion().CodebaseVersion),
+			Data: map[string]interface{}{
+				"worker_id": service.WorkerID,
+				"version":   dm.versionManager.GetLocalVersion().CodebaseVersion,
+			},
+		})
+	}
 
 	return nil
 }

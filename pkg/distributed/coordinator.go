@@ -34,6 +34,7 @@ type DistributedCoordinator struct {
 	sshPool          *SSHPool
 	pairingManager   *PairingManager
 	fallbackManager  *FallbackManager
+	versionManager   *VersionManager
 	eventBus         *events.EventBus
 	apiLogger        *deployment.APICommunicationLogger
 	currentIndex     int
@@ -48,6 +49,7 @@ func NewDistributedCoordinator(
 	sshPool *SSHPool,
 	pairingManager *PairingManager,
 	fallbackManager *FallbackManager,
+	versionManager *VersionManager,
 	eventBus *events.EventBus,
 	apiLogger *deployment.APICommunicationLogger,
 ) *DistributedCoordinator {
@@ -57,6 +59,7 @@ func NewDistributedCoordinator(
 		sshPool:          sshPool,
 		pairingManager:   pairingManager,
 		fallbackManager:  fallbackManager,
+		versionManager:   versionManager,
 		eventBus:         eventBus,
 		apiLogger:        apiLogger,
 		currentIndex:     0,
@@ -346,6 +349,12 @@ func (dc *DistributedCoordinator) translateWithRemoteInstances(
 
 		triedInstances[instance.ID] = true
 
+		// Validate worker version before attempting translation
+		if err := dc.validateWorkerForWork(ctx, instance.WorkerID); err != nil {
+			dc.emitWarning(fmt.Sprintf("Worker %s validation failed: %v", instance.WorkerID, err))
+			continue
+		}
+
 		dc.emitEvent(events.Event{
 			Type:      "distributed_translation_attempt",
 			SessionID: "system",
@@ -374,36 +383,63 @@ func (dc *DistributedCoordinator) translateWithRemoteInstances(
 		}
 
 		lastErr = err
-		dc.emitWarning(fmt.Sprintf("Distributed translation failed with %s: %v", instance.ID, err))
-
-		// Mark instance as temporarily unavailable
-		if strings.Contains(err.Error(), "rate limit") || strings.Contains(err.Error(), "429") {
-			instance.Available = false
-			go dc.reenableRemoteInstance(instance, 30*time.Second)
-		}
-
-		if attempt < dc.maxRetries*len(dc.remoteInstances)-1 {
-			time.Sleep(dc.retryDelay)
-		}
+		dc.emitWarning(fmt.Sprintf("Distributed translation attempt %d failed: %v", attempt+1, err))
 	}
 
-	return "", fmt.Errorf("distributed translation failed after %d attempts: %w", dc.maxRetries, lastErr)
+	return "", fmt.Errorf("all distributed translation attempts failed, last error: %w", lastErr)
 }
 
-// translateWithRemoteInstance translates using a specific remote instance
+// validateWorkerForWork validates that a worker is ready for work
+func (dc *DistributedCoordinator) validateWorkerForWork(ctx context.Context, workerID string) error {
+	if dc.versionManager == nil {
+		// Version manager not available, skip validation
+		return nil
+	}
+
+	// Get the service for this worker
+	services := dc.pairingManager.GetPairedServices()
+	service, exists := services[workerID]
+	if !exists {
+		return fmt.Errorf("worker %s not found in paired services", workerID)
+	}
+
+	// Validate worker version and health
+	return dc.versionManager.ValidateWorkerForWork(ctx, service)
+}
+
+// getNextRemoteInstance returns the next remote instance in round-robin fashion
+func (dc *DistributedCoordinator) getNextRemoteInstance() *RemoteLLMInstance {
+	dc.mu.Lock()
+	defer dc.mu.Unlock()
+
+	if len(dc.remoteInstances) == 0 {
+		return nil
+	}
+
+	// Use round-robin selection
+	instance := dc.remoteInstances[dc.currentIndex]
+	dc.currentIndex = (dc.currentIndex + 1) % len(dc.remoteInstances)
+
+	return instance
+}
+
+// translateWithRemoteInstance performs translation using a specific remote instance
 func (dc *DistributedCoordinator) translateWithRemoteInstance(
 	ctx context.Context,
 	instance *RemoteLLMInstance,
 	text string,
 	contextHint string,
 ) (string, error) {
-
-	service, exists := dc.pairingManager.services[instance.WorkerID]
+	// Get the service for this worker
+	services := dc.pairingManager.GetPairedServices()
+	service, exists := services[instance.WorkerID]
 	if !exists {
-		return "", fmt.Errorf("service %s not found", instance.WorkerID)
+		return "", fmt.Errorf("service not found for worker %s", instance.WorkerID)
 	}
 
 	// Prepare translation request
+	translateURL := fmt.Sprintf("%s://%s:%d/api/v1/translate", service.Protocol, service.Host, service.Port)
+
 	requestBody := map[string]interface{}{
 		"text":         text,
 		"context_hint": contextHint,
@@ -416,18 +452,22 @@ func (dc *DistributedCoordinator) translateWithRemoteInstance(
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s://%s:%d/api/v1/translate", service.Protocol, service.Host, service.Port)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(jsonData)))
+	req, err := http.NewRequestWithContext(ctx, "POST", translateURL, strings.NewReader(string(jsonData)))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
+	// Log outgoing request
+	var logEntry *deployment.APICommunicationLog
+	if dc.apiLogger != nil {
+		logEntry = dc.apiLogger.LogRequest(service.Host, 8443, service.Host, service.Port, "POST", "/api/v1/translate", int64(len(jsonData)))
+	}
+
 	// Use HTTP client that accepts self-signed certificates
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
@@ -435,69 +475,51 @@ func (dc *DistributedCoordinator) translateWithRemoteInstance(
 		},
 	}
 
+	startTime := time.Now()
 	resp, err := client.Do(req)
+	duration := time.Since(startTime)
+
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		// Log failed response
+		if dc.apiLogger != nil && logEntry != nil {
+			dc.apiLogger.LogResponse(logEntry, 0, 0, duration, err)
+		}
+		return "", fmt.Errorf("translation request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		// Log failed response
+		if dc.apiLogger != nil && logEntry != nil {
+			dc.apiLogger.LogResponse(logEntry, resp.StatusCode, 0, duration, err)
+		}
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Log successful response
+	if dc.apiLogger != nil && logEntry != nil {
+		dc.apiLogger.LogResponse(logEntry, resp.StatusCode, int64(len(body)), duration, nil)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("translation failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
+	// Parse response
 	var response map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if translated, ok := response["translated_text"].(string); ok && translated != "" {
-		return translated, nil
+	// Extract translated text
+	translated, ok := response["translated_text"].(string)
+	if !ok {
+		return "", fmt.Errorf("invalid response format: missing translated_text")
 	}
 
-	return "", fmt.Errorf("invalid response format")
-}
-
-// getNextRemoteInstance gets the next available remote instance (round-robin)
-func (dc *DistributedCoordinator) getNextRemoteInstance() *RemoteLLMInstance {
-	dc.mu.Lock()
-	defer dc.mu.Unlock()
-
-	if len(dc.remoteInstances) == 0 {
-		return nil
-	}
-
-	startIndex := dc.currentIndex
-	for {
-		instance := dc.remoteInstances[dc.currentIndex]
-		dc.currentIndex = (dc.currentIndex + 1) % len(dc.remoteInstances)
-
-		if instance.Available {
-			return instance
-		}
-
-		if dc.currentIndex == startIndex {
-			return nil
-		}
-	}
-}
-
-// reenableRemoteInstance re-enables a remote instance after delay
-func (dc *DistributedCoordinator) reenableRemoteInstance(instance *RemoteLLMInstance, delay time.Duration) {
-	time.Sleep(delay)
-	instance.mu.Lock()
-	instance.Available = true
-	instance.mu.Unlock()
-
-	dc.emitEvent(events.Event{
-		Type:      "distributed_instance_reenabled",
-		SessionID: "system",
-		Message:   fmt.Sprintf("Remote instance %s re-enabled after cooldown", instance.ID),
-		Data: map[string]interface{}{
-			"instance_id": instance.ID,
-			"worker_id":   instance.WorkerID,
-		},
-	})
+	return translated, nil
 }
 
 // GetRemoteInstanceCount returns the number of remote instances

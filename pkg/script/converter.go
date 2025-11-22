@@ -34,6 +34,10 @@ func NewConverter() *Converter {
 	for cyrl, latn := range cyrlToLatn {
 		latnToCyrl[latn] = cyrl
 	}
+	// Add uppercase digraphs
+	latnToCyrl["LJ"] = 'Љ'
+	latnToCyrl["NJ"] = 'Њ'
+	latnToCyrl["DŽ"] = 'Џ'
 
 	return &Converter{
 		cyrlToLatn: cyrlToLatn,

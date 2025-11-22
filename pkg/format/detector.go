@@ -13,25 +13,24 @@ import (
 type Format string
 
 const (
-	FormatFB2  Format = "fb2"
-	FormatEPUB Format = "epub"
-	FormatPDF  Format = "pdf"
-	FormatMOBI Format = "mobi"
-	FormatAZW  Format = "azw"
-	FormatAZW3 Format = "azw3"
-	FormatTXT  Format = "txt"
-	FormatHTML Format = "html"
-	FormatDOCX Format = "docx"
-	FormatRTF  Format = "rtf"
+	FormatFB2     Format = "fb2"
+	FormatEPUB    Format = "epub"
+	FormatPDF     Format = "pdf"
+	FormatMOBI    Format = "mobi"
+	FormatAZW     Format = "azw"
+	FormatAZW3    Format = "azw3"
+	FormatTXT     Format = "txt"
+	FormatHTML    Format = "html"
+	FormatDOCX    Format = "docx"
+	FormatRTF     Format = "rtf"
 	FormatUnknown Format = "unknown"
 )
 
 // Magic byte signatures for different formats
 var magicBytes = map[Format][]byte{
 	FormatPDF:  []byte("%PDF"),
-	FormatEPUB: []byte("PK"),  // EPUB is a ZIP file
+	FormatEPUB: []byte("PK"), // EPUB is a ZIP file (DOCX also uses PK but is handled by disambiguation)
 	FormatMOBI: []byte("BOOKMOBI"),
-	FormatDOCX: []byte("PK"),  // DOCX is also a ZIP
 }
 
 // Detector handles ebook format detection
@@ -172,6 +171,9 @@ func (d *Detector) detectByContent(data []byte) Format {
 
 // isPlainText checks if data is mostly plain text
 func (d *Detector) isPlainText(data []byte) bool {
+	if len(data) == 0 {
+		return true // Empty data is considered plain text
+	}
 	printableCount := 0
 	for _, b := range data {
 		if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' || b >= 128 {

@@ -29,9 +29,9 @@
     "enabled": true,
     "workers": {
       "thinker-worker": {
-        "name": "Local Dictionary Worker",
-        "host": "localhost",
-        "port": 8444,
+        "name": "Remote Llama.cpp Worker",
+        "host": "thinker.local",
+        "port": 22,
         "user": "milosvasic",
         "password": "WhiteSnake8587",
         "max_capacity": 10,

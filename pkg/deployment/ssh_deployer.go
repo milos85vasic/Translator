@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -62,23 +61,11 @@ func (sd *SSHDeployer) DeployInstance(ctx context.Context, config *DeploymentCon
 
 // connectSSH establishes SSH connection
 func (sd *SSHDeployer) connectSSH(config *DeploymentConfig) (*ssh.Client, error) {
-	// Read private key
-	key, err := os.ReadFile(config.SSHKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read SSH key: %w", err)
-	}
-
-	// Parse private key
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse SSH key: %w", err)
-	}
-
 	// SSH client config
 	sshConfig := &ssh.ClientConfig{
 		User: config.User,
 		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
+			ssh.Password(config.Password),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // In production, use proper host key verification
 		Timeout:         30 * time.Second,

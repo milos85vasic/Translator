@@ -251,7 +251,7 @@ translate_book() {
             -d "{\"text\": \"$text_content\", \"provider\": \"dictionary\"}" \
             -o "$output_path" 2>&1)
     else
-        response=$(curl -s -k -X POST "https://localhost:8444/api/v1/translate/$api_endpoint" \
+        response=$(curl -s -k -X POST "https://localhost:8444/api/v1/translate/$api_endpoint?output_format=epub" \
             -F "file=@$book_path" \
             -F "provider=dictionary" \
             -o "$output_path" 2>&1)
@@ -379,7 +379,7 @@ main() {
     start_main_server
 
     # Deploy remote worker
-    # deploy_remote_worker  # Assuming worker is already running
+    deploy_remote_worker
 
     # Discover and pair workers
     # discover_workers  # Skipping discovery, using direct worker

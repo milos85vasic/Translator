@@ -177,7 +177,7 @@ func handleRestart(orchestrator *deployment.DeploymentOrchestrator, service stri
 func handleGeneratePlan(cfg *config.Config) {
 	log.Println("Generating deployment plan...")
 
-	plan := generateDefaultPlan(cfg)
+	plan := generateDeploymentPlan(cfg)
 
 	// Write plan to file
 	data, err := json.MarshalIndent(plan, "", "  ")
@@ -206,33 +206,8 @@ func loadDeploymentPlan(filename string) (*deployment.DeploymentPlan, error) {
 	return &plan, nil
 }
 
-func generateDefaultPlan(cfg *config.Config) *deployment.DeploymentPlan {
+func generateDeploymentPlan(cfg *config.Config) *deployment.DeploymentPlan {
 	plan := &deployment.DeploymentPlan{
-		Main: &deployment.DeploymentConfig{
-			Host:          "localhost",
-			User:          "translator",
-			SSHKeyPath:    "/path/to/ssh/key",
-			DockerImage:   "translator:latest",
-			ContainerName: "translator-main",
-			Ports: []deployment.PortMapping{
-				{HostPort: 8443, ContainerPort: 8443, Protocol: "tcp"},
-			},
-			Environment: map[string]string{
-				"JWT_SECRET": "main-server-secret",
-			},
-			Volumes: []deployment.VolumeMapping{
-				{HostPath: "./certs", ContainerPath: "/app/certs", ReadOnly: true},
-				{HostPath: "./config.distributed.json", ContainerPath: "/app/config.json", ReadOnly: true},
-			},
-			Networks:      []string{"translator-network"},
-			RestartPolicy: "unless-stopped",
-			HealthCheck: &deployment.HealthCheckConfig{
-				Test:     []string{"CMD", "curl", "-f", "https://localhost:8443/health"},
-				Interval: 30 * time.Second,
-				Timeout:  10 * time.Second,
-				Retries:  3,
-			},
-		},
 		Workers: []*deployment.DeploymentConfig{},
 	}
 
@@ -242,7 +217,8 @@ func generateDefaultPlan(cfg *config.Config) *deployment.DeploymentPlan {
 		workerConfig := &deployment.DeploymentConfig{
 			Host:          worker.Host,
 			User:          worker.User,
-			SSHKeyPath:    worker.KeyFile,
+			Password:      worker.Password,
+			SSHKeyPath:    "",
 			DockerImage:   "translator:latest",
 			ContainerName: fmt.Sprintf("translator-worker-%s", workerID),
 			Ports: []deployment.PortMapping{

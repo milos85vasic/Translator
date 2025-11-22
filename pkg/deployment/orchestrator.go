@@ -43,6 +43,7 @@ type DeployedInstance struct {
 type DeploymentConfig struct {
 	Host          string
 	User          string
+	Password      string
 	SSHKeyPath    string
 	DockerImage   string
 	ContainerName string

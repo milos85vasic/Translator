@@ -21,7 +21,7 @@ type Downloader struct {
 func NewDownloader() *Downloader {
 	homeDir, _ := os.UserHomeDir()
 	cacheDir := filepath.Join(homeDir, ".cache", "translator", "models")
-	os.MkdirAll(cacheDir, 0755)
+	_ = os.MkdirAll(cacheDir, 0755)
 
 	return &Downloader{
 		cacheDir: cacheDir,
@@ -143,10 +143,10 @@ func (d *Downloader) downloadWithProgress(url, destPath string) error {
 
 	// Create progress writer
 	writer := &progressWriter{
-		writer:      out,
-		total:       size,
-		lastPrint:   time.Now(),
-		startTime:   time.Now(),
+		writer:    out,
+		total:     size,
+		lastPrint: time.Now(),
+		startTime: time.Now(),
 	}
 
 	// Copy with progress

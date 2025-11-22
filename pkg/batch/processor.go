@@ -13,7 +13,6 @@ import (
 	"digital.vasic.translator/pkg/events"
 	"digital.vasic.translator/pkg/format"
 	"digital.vasic.translator/pkg/language"
-	"digital.vasic.translator/pkg/progress"
 	"digital.vasic.translator/pkg/translator"
 )
 
@@ -30,14 +29,14 @@ const (
 // ProcessingOptions contains options for batch processing
 type ProcessingOptions struct {
 	// Input
-	InputType      InputType
-	InputPath      string
-	InputString    string
-	InputReader    io.Reader
+	InputType   InputType
+	InputPath   string
+	InputString string
+	InputReader io.Reader
 
 	// Output
-	OutputPath     string
-	OutputFormat   string
+	OutputPath   string
+	OutputFormat string
 
 	// Translation
 	SourceLanguage language.Language
@@ -52,8 +51,8 @@ type ProcessingOptions struct {
 	MaxConcurrency int
 
 	// Events
-	EventBus       *events.EventBus
-	SessionID      string
+	EventBus  *events.EventBus
+	SessionID string
 }
 
 // ProcessingResult contains the result of a single file processing
@@ -67,7 +66,6 @@ type ProcessingResult struct {
 // BatchProcessor handles batch translation operations
 type BatchProcessor struct {
 	options *ProcessingOptions
-	tracker *progress.Tracker
 }
 
 // NewBatchProcessor creates a new batch processor

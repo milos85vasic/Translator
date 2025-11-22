@@ -6,20 +6,23 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // NoteType represents different types of literary notes
 type NoteType string
 
 const (
-	NoteTypeCharacter   NoteType = "character"    // Character development, traits, arcs
-	NoteTypeTone        NoteType = "tone"         // Tone, atmosphere, mood
-	NoteTypeTheme       NoteType = "theme"        // Themes, motifs, symbols
-	NoteTypeCulture     NoteType = "culture"      // Cultural references, idioms
-	NoteTypeStyle       NoteType = "style"        // Literary style, techniques
-	NoteTypeContext     NoteType = "context"      // Historical, social context
-	NoteTypeVocabulary  NoteType = "vocabulary"   // Key terms, specialized vocabulary
-	NoteTypeStructure   NoteType = "structure"    // Narrative structure, pacing
+	NoteTypeCharacter  NoteType = "character"  // Character development, traits, arcs
+	NoteTypeTone       NoteType = "tone"       // Tone, atmosphere, mood
+	NoteTypeTheme      NoteType = "theme"      // Themes, motifs, symbols
+	NoteTypeCulture    NoteType = "culture"    // Cultural references, idioms
+	NoteTypeStyle      NoteType = "style"      // Literary style, techniques
+	NoteTypeContext    NoteType = "context"    // Historical, social context
+	NoteTypeVocabulary NoteType = "vocabulary" // Key terms, specialized vocabulary
+	NoteTypeStructure  NoteType = "structure"  // Narrative structure, pacing
 )
 
 // ImportanceLevel represents the importance of a note
@@ -356,7 +359,7 @@ func FormatNotesForContext(notes []*LiteraryNote) string {
 
 	// Format each type
 	for noteType, typeNotes := range byType {
-		sb.WriteString(fmt.Sprintf("### %s\n", strings.Title(string(noteType))))
+		sb.WriteString(fmt.Sprintf("### %s\n", cases.Title(language.English, cases.Compact).String(string(noteType))))
 
 		for _, note := range typeNotes {
 			importance := ""

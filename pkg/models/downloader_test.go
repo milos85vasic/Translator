@@ -102,7 +102,7 @@ func TestGetModelPath(t *testing.T) {
 
 		// Write 2MB of data
 		data := make([]byte, 2*1024*1024)
-		file.Write(data)
+		_, _ = file.Write(data)
 		file.Close()
 
 		defer os.Remove(modelPath)
@@ -286,8 +286,8 @@ func TestGetCacheSize(t *testing.T) {
 	t.Run("With models", func(t *testing.T) {
 		// Create test models with known sizes
 		sizes := []int{
-			1024,         // 1KB
-			1024 * 1024,  // 1MB
+			1024,            // 1KB
+			1024 * 1024,     // 1MB
 			2 * 1024 * 1024, // 2MB
 		}
 
@@ -742,11 +742,11 @@ func TestProgressWriterOutput(t *testing.T) {
 	// We'll capture output by temporarily redirecting it
 
 	pw := &progressWriter{
-		writer:    io.Discard,
-		total:     1000,
+		writer:     io.Discard,
+		total:      1000,
 		downloaded: 500,
-		startTime: time.Now().Add(-10 * time.Second),
-		lastPrint: time.Now(),
+		startTime:  time.Now().Add(-10 * time.Second),
+		lastPrint:  time.Now(),
 	}
 
 	// Test that printProgress doesn't crash

@@ -5,6 +5,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // PolishingReport contains comprehensive details of the polishing process
@@ -21,33 +24,33 @@ type PolishingReport struct {
 	SectionResults []*PolishingResult
 
 	// Aggregate statistics
-	TotalSections        int
-	TotalChanges         int
-	TotalIssues          int
-	TotalSuggestions     int
+	TotalSections    int
+	TotalChanges     int
+	TotalIssues      int
+	TotalSuggestions int
 
 	// Consensus statistics
-	ConsensusRate        float64 // Percentage of sections where consensus was reached
-	AverageConfidence    float64
+	ConsensusRate     float64 // Percentage of sections where consensus was reached
+	AverageConfidence float64
 
 	// Quality scores
-	AverageSpiritScore      float64
-	AverageLanguageScore    float64
-	AverageContextScore     float64
-	AverageVocabularyScore  float64
-	OverallScore            float64
+	AverageSpiritScore     float64
+	AverageLanguageScore   float64
+	AverageContextScore    float64
+	AverageVocabularyScore float64
+	OverallScore           float64
 
 	// Issue breakdown by type
-	IssuesByType         map[string]int
-	IssuesBySeverity     map[string]int
+	IssuesByType     map[string]int
+	IssuesBySeverity map[string]int
 
 	// Provider statistics
-	ProviderAgreements   map[string]int // How often each provider agreed with consensus
-	ProviderScores       map[string]float64
+	ProviderAgreements map[string]int // How often each provider agreed with consensus
+	ProviderScores     map[string]float64
 
 	// Top issues and changes
-	TopIssues            []Issue
-	SignificantChanges   []Change
+	TopIssues          []Issue
+	SignificantChanges []Change
 }
 
 // NewPolishingReport creates a new polishing report
@@ -262,7 +265,7 @@ func (pr *PolishingReport) GenerateMarkdownReport() string {
 			}
 
 			sb.WriteString(fmt.Sprintf("### %s %s - %s\n\n",
-				icon, strings.Title(issue.Severity), issue.Location))
+				icon, cases.Title(language.English, cases.Compact).String(issue.Severity), issue.Location))
 			sb.WriteString(fmt.Sprintf("**Type:** %s\n\n", issue.Type))
 			sb.WriteString(fmt.Sprintf("**Description:** %s\n\n", issue.Description))
 			if issue.Suggestion != "" {
@@ -366,15 +369,15 @@ func (pr *PolishingReport) GenerateMarkdownReport() string {
 // GenerateJSONReport generates a JSON report (structure only, actual JSON marshaling done by caller)
 func (pr *PolishingReport) GenerateJSONReport() map[string]interface{} {
 	return map[string]interface{}{
-		"timestamp":  pr.EndTime.Format(time.RFC3339),
-		"duration":   pr.Duration.String(),
+		"timestamp": pr.EndTime.Format(time.RFC3339),
+		"duration":  pr.Duration.String(),
 		"config": map[string]interface{}{
-			"providers":          pr.Config.Providers,
-			"min_consensus":      pr.Config.MinConsensus,
-			"verify_spirit":      pr.Config.VerifySpirit,
-			"verify_language":    pr.Config.VerifyLanguage,
-			"verify_context":     pr.Config.VerifyContext,
-			"verify_vocabulary":  pr.Config.VerifyVocabulary,
+			"providers":         pr.Config.Providers,
+			"min_consensus":     pr.Config.MinConsensus,
+			"verify_spirit":     pr.Config.VerifySpirit,
+			"verify_language":   pr.Config.VerifyLanguage,
+			"verify_context":    pr.Config.VerifyContext,
+			"verify_vocabulary": pr.Config.VerifyVocabulary,
 		},
 		"summary": map[string]interface{}{
 			"total_sections":     pr.TotalSections,
@@ -424,7 +427,7 @@ func (pr *PolishingReport) GenerateSummary() string {
 	if pr.TotalIssues > 0 {
 		sb.WriteString(fmt.Sprintf("Issues Found: %d\n", pr.TotalIssues))
 		for severity, count := range pr.IssuesBySeverity {
-			sb.WriteString(fmt.Sprintf("  %s: %d\n", strings.Title(severity), count))
+			sb.WriteString(fmt.Sprintf("  %s: %d\n", cases.Title(language.English, cases.Compact).String(severity), count))
 		}
 	}
 

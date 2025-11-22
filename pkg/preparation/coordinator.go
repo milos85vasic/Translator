@@ -17,7 +17,6 @@ import (
 type PreparationCoordinator struct {
 	config    PreparationConfig
 	providers []translator.Translator
-	mu        sync.Mutex
 }
 
 // NewPreparationCoordinator creates a new preparation coordinator
@@ -216,7 +215,7 @@ func (pc *PreparationCoordinator) analyzeChapters(ctx context.Context, book *ebo
 		go func(chapterNum int, ch ebook.Chapter) {
 			defer wg.Done()
 
-			semaphore <- struct{}{} // Acquire
+			semaphore <- struct{}{}        // Acquire
 			defer func() { <-semaphore }() // Release
 
 			// Extract chapter content

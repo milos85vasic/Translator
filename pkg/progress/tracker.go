@@ -8,37 +8,35 @@ import (
 
 // TranslationProgress tracks detailed translation progress
 type TranslationProgress struct {
-	mu sync.RWMutex
-
 	// Book information
-	BookTitle       string    `json:"book_title"`
-	TotalChapters   int       `json:"total_chapters"`
-	CurrentChapter  int       `json:"current_chapter"`
-	ChapterTitle    string    `json:"chapter_title"`
-	CurrentSection  int       `json:"current_section"`
-	TotalSections   int       `json:"total_sections"`
+	BookTitle      string `json:"book_title"`
+	TotalChapters  int    `json:"total_chapters"`
+	CurrentChapter int    `json:"current_chapter"`
+	ChapterTitle   string `json:"chapter_title"`
+	CurrentSection int    `json:"current_section"`
+	TotalSections  int    `json:"total_sections"`
 
 	// Progress metrics
-	PercentComplete float64   `json:"percent_complete"`
-	ItemsTotal      int       `json:"items_total"`
-	ItemsCompleted  int       `json:"items_completed"`
-	ItemsFailed     int       `json:"items_failed"`
+	PercentComplete float64 `json:"percent_complete"`
+	ItemsTotal      int     `json:"items_total"`
+	ItemsCompleted  int     `json:"items_completed"`
+	ItemsFailed     int     `json:"items_failed"`
 
 	// Time tracking
-	StartTime       time.Time `json:"start_time"`
-	ElapsedTime     string    `json:"elapsed_time"`
-	EstimatedETA    string    `json:"estimated_eta"`
+	StartTime    time.Time `json:"start_time"`
+	ElapsedTime  string    `json:"elapsed_time"`
+	EstimatedETA string    `json:"estimated_eta"`
 
 	// Translation details
-	SourceLanguage  string    `json:"source_language"`
-	TargetLanguage  string    `json:"target_language"`
-	Provider        string    `json:"provider"`
-	Model           string    `json:"model"`
+	SourceLanguage string `json:"source_language"`
+	TargetLanguage string `json:"target_language"`
+	Provider       string `json:"provider"`
+	Model          string `json:"model"`
 
 	// Status
-	Status          string    `json:"status"` // "initializing", "translating", "completed", "error"
-	CurrentTask     string    `json:"current_task"`
-	SessionID       string    `json:"session_id"`
+	Status      string `json:"status"` // "initializing", "translating", "completed", "error"
+	CurrentTask string `json:"current_task"`
+	SessionID   string `json:"session_id"`
 }
 
 // Tracker manages translation progress

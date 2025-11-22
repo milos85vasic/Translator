@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -149,7 +148,7 @@ func (sc *SecurityConfig) loadKnownHosts(filename string) (ssh.HostKeyCallback, 
 	}
 
 	// Read the known hosts file
-	content, err := ioutil.ReadFile(filename)
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read known hosts file: %w", err)
 	}
@@ -284,7 +283,7 @@ func (sc *SecurityConfig) SecureTLSConfig() (*tls.Config, error) {
 
 		// Load CA certificate if specified
 		if sc.TLSCAFile != "" {
-			caCert, err := ioutil.ReadFile(sc.TLSCAFile)
+			caCert, err := os.ReadFile(sc.TLSCAFile)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read CA file: %w", err)
 			}

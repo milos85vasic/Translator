@@ -14,12 +14,14 @@ import (
 // MarkdownToEPUBConverter converts Markdown files to EPUB format
 type MarkdownToEPUBConverter struct {
 	metadata ebook.Metadata
+	hrRegex  *regexp.Regexp
 }
 
 // NewMarkdownToEPUBConverter creates a new converter
 func NewMarkdownToEPUBConverter() *MarkdownToEPUBConverter {
 	return &MarkdownToEPUBConverter{
 		metadata: ebook.Metadata{},
+		hrRegex:  regexp.MustCompile(`^[-*_]{3,}$`),
 	}
 }
 
@@ -104,7 +106,7 @@ func (c *MarkdownToEPUBConverter) parseMarkdown(content string, mdDir string) ([
 
 		// Chapter marker (# or ## followed by text)
 		if (strings.HasPrefix(line, "# ") || strings.HasPrefix(line, "## ")) &&
-		   strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "##"), "#")) != "" {
+			strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "##"), "#")) != "" {
 			// Save previous chapter
 			if currentChapter != nil {
 				currentChapter.Sections = []ebook.Section{
@@ -124,7 +126,7 @@ func (c *MarkdownToEPUBConverter) parseMarkdown(content string, mdDir string) ([
 		}
 
 		// Horizontal rule (chapter separator) - also saves chapter
-		if matched, _ := regexp.MatchString(`^[-*_]{3,}$`, strings.TrimSpace(line)); matched {
+		if c.hrRegex.MatchString(strings.TrimSpace(line)) {
 			if currentChapter != nil {
 				currentChapter.Sections = []ebook.Section{
 					{Content: strings.TrimSpace(currentContent.String())},
@@ -384,7 +386,7 @@ func (c *MarkdownToEPUBConverter) markdownToHTML(markdown string) string {
 		}
 
 		// Horizontal rule
-		if matched, _ := regexp.MatchString(`^[-*_]{3,}$`, trimmed); matched {
+		if c.hrRegex.MatchString(trimmed) {
 			if inParagraph {
 				html.WriteString("  <p>" + c.convertInlineMarkdown(currentParagraph.String()) + "</p>\n")
 				currentParagraph.Reset()

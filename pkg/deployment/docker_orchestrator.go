@@ -70,7 +70,7 @@ func NewDockerOrchestrator(cfg *config.Config, eventBus *events.EventBus) *Docke
 
 	// Create compose directory
 	composeDir := filepath.Join(os.TempDir(), "translator-compose")
-	os.MkdirAll(composeDir, 0755)
+	_ = os.MkdirAll(composeDir, 0755)
 
 	return &DockerOrchestrator{
 		config:     cfg,
@@ -236,7 +236,7 @@ func (do *DockerOrchestrator) DeployWithCompose(ctx context.Context, composePath
 	if err != nil {
 		return err
 	}
-	defer os.Chdir(oldDir)
+	defer func() { _ = os.Chdir(oldDir) }()
 
 	if err := os.Chdir(composeDir); err != nil {
 		return fmt.Errorf("failed to change to compose directory: %w", err)

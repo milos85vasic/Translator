@@ -145,7 +145,7 @@ func (c *Client) WritePump() {
 		message, ok := <-c.Send
 		if !ok {
 			// Hub closed the channel
-			c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+			_ = c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
 		}
 
@@ -153,13 +153,19 @@ func (c *Client) WritePump() {
 		if err != nil {
 			return
 		}
-		w.Write(message)
+		if _, err := w.Write(message); err != nil {
+			return
+		}
 
 		// Add queued messages to current websocket message
 		n := len(c.Send)
 		for i := 0; i < n; i++ {
-			w.Write([]byte{'\n'})
-			w.Write(<-c.Send)
+			if _, err := w.Write([]byte{'\n'}); err != nil {
+				return
+			}
+			if _, err := w.Write(<-c.Send); err != nil {
+				return
+			}
 		}
 
 		if err := w.Close(); err != nil {

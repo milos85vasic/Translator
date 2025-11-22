@@ -2,8 +2,14 @@ package distributed
 
 import (
 	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +31,15 @@ type UpdateBackup struct {
 	BackupPath      string
 	UpdatePackage   string
 	Status          string // "created", "active", "rolled_back", "expired"
+}
+
+// SignedUpdatePackage represents a signed update package
+type SignedUpdatePackage struct {
+	PackagePath   string
+	SignaturePath string
+	PublicKeyPath string
+	Version       string
+	Timestamp     time.Time
 }
 
 // VersionManager handles version checking, updates, and validation for remote workers
@@ -225,6 +240,11 @@ func (vm *VersionManager) compareVersions(local, remote VersionInfo) bool {
 
 // UpdateWorker updates a worker to the latest version
 func (vm *VersionManager) UpdateWorker(ctx context.Context, service *RemoteService) error {
+	return vm.UpdateWorkerWithSigning(ctx, service, "", "")
+}
+
+// UpdateWorkerWithSigning updates a worker with optional signature verification
+func (vm *VersionManager) UpdateWorkerWithSigning(ctx context.Context, service *RemoteService, privateKeyPath, expectedPublicKeyPath string) error {
 	service.Status = "updating"
 
 	// Emit update started event
@@ -233,9 +253,10 @@ func (vm *VersionManager) UpdateWorker(ctx context.Context, service *RemoteServi
 		SessionID: "system",
 		Timestamp: time.Now(),
 		Data: map[string]interface{}{
-			"worker_id":       service.WorkerID,
-			"target_version":  vm.localVersion.CodebaseVersion,
-			"current_version": service.Version.CodebaseVersion,
+			"worker_id":         service.WorkerID,
+			"target_version":    vm.localVersion.CodebaseVersion,
+			"current_version":   service.Version.CodebaseVersion,
+			"signature_enabled": privateKeyPath != "",
 		},
 	}
 	vm.eventBus.Publish(event)
@@ -248,18 +269,39 @@ func (vm *VersionManager) UpdateWorker(ctx context.Context, service *RemoteServi
 	}
 	backup.Status = "active"
 
-	// Create update package
-	updatePackage, err := vm.createUpdatePackage()
-	if err != nil {
-		vm.rollbackWorkerUpdate(ctx, service) // Rollback on failure
-		return fmt.Errorf("failed to create update package: %w", err)
+	var updatePackage string
+	var signedPackage *SignedUpdatePackage
+
+	// Create update package (signed or unsigned)
+	if privateKeyPath != "" {
+		signedPackage, err = vm.createSignedUpdatePackage(privateKeyPath)
+		if err != nil {
+			vm.rollbackWorkerUpdate(ctx, service) // Rollback on failure
+			return fmt.Errorf("failed to create signed update package: %w", err)
+		}
+		updatePackage = signedPackage.PackagePath
+		backup.UpdatePackage = updatePackage
+	} else {
+		updatePackage, err = vm.createUpdatePackage()
+		if err != nil {
+			vm.rollbackWorkerUpdate(ctx, service) // Rollback on failure
+			return fmt.Errorf("failed to create update package: %w", err)
+		}
+		backup.UpdatePackage = updatePackage
 	}
-	backup.UpdatePackage = updatePackage
 
 	// Upload update package to worker
 	if err := vm.uploadUpdatePackage(ctx, service, updatePackage); err != nil {
 		vm.rollbackWorkerUpdate(ctx, service) // Rollback on failure
 		return fmt.Errorf("failed to upload update package: %w", err)
+	}
+
+	// Upload signature and public key if signed
+	if signedPackage != nil {
+		if err := vm.uploadSignatureFiles(ctx, service, signedPackage); err != nil {
+			vm.rollbackWorkerUpdate(ctx, service) // Rollback on failure
+			return fmt.Errorf("failed to upload signature files: %w", err)
+		}
 	}
 
 	// Trigger update on worker
@@ -293,6 +335,7 @@ func (vm *VersionManager) UpdateWorker(ctx context.Context, service *RemoteServi
 		Data: map[string]interface{}{
 			"worker_id": service.WorkerID,
 			"version":   vm.localVersion.CodebaseVersion,
+			"signed":    signedPackage != nil,
 		},
 	}
 	vm.eventBus.Publish(event)
@@ -624,4 +667,224 @@ func (vm *VersionManager) InstallWorker(ctx context.Context, workerID, host stri
 	// This would implement the full installation process
 	// For now, return not implemented
 	return fmt.Errorf("worker installation not yet implemented")
+}
+
+// signUpdatePackage creates a digital signature for an update package
+func (vm *VersionManager) signUpdatePackage(packagePath, privateKeyPath string) (string, error) {
+	// Read the private key
+	keyData, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read private key: %w", err)
+	}
+
+	// Parse the private key
+	block, _ := pem.Decode(keyData)
+	if block == nil {
+		return "", fmt.Errorf("failed to decode PEM block")
+	}
+
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	// Read the package file
+	packageData, err := os.ReadFile(packagePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read package file: %w", err)
+	}
+
+	// Create hash of the package
+	hash := sha256.Sum256(packageData)
+
+	// Sign the hash
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
+	if err != nil {
+		return "", fmt.Errorf("failed to sign package: %w", err)
+	}
+
+	// Create signature file path
+	sigPath := packagePath + ".sig"
+
+	// Write signature to file
+	if err := os.WriteFile(sigPath, signature, 0644); err != nil {
+		return "", fmt.Errorf("failed to write signature file: %w", err)
+	}
+
+	return sigPath, nil
+}
+
+// verifyUpdatePackage verifies the digital signature of an update package
+func (vm *VersionManager) verifyUpdatePackage(packagePath, signaturePath, publicKeyPath string) error {
+	// Read the public key
+	keyData, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read public key: %w", err)
+	}
+
+	// Parse the public key
+	block, _ := pem.Decode(keyData)
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM block")
+	}
+
+	publicKey, err := x509.ParsePKCS1PublicKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse public key: %w", err)
+	}
+
+	// Read the package file
+	packageData, err := os.ReadFile(packagePath)
+	if err != nil {
+		return fmt.Errorf("failed to read package file: %w", err)
+	}
+
+	// Read the signature
+	signature, err := os.ReadFile(signaturePath)
+	if err != nil {
+		return fmt.Errorf("failed to read signature file: %w", err)
+	}
+
+	// Create hash of the package
+	hash := sha256.Sum256(packageData)
+
+	// Verify the signature
+	err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
+	if err != nil {
+		return fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	return nil
+}
+
+// generateSigningKeys generates a new RSA key pair for signing
+func (vm *VersionManager) generateSigningKeys(keyDir string) (privateKeyPath, publicKeyPath string, err error) {
+	// Ensure key directory exists
+	if err := os.MkdirAll(keyDir, 0700); err != nil {
+		return "", "", fmt.Errorf("failed to create key directory: %w", err)
+	}
+
+	// Generate private key
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate private key: %w", err)
+	}
+
+	// Encode private key to PEM
+	privateKeyPEM := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}
+
+	privateKeyPath = filepath.Join(keyDir, "translator-signing-key.pem")
+	privateFile, err := os.OpenFile(privateKeyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create private key file: %w", err)
+	}
+	defer privateFile.Close()
+
+	if err := pem.Encode(privateFile, privateKeyPEM); err != nil {
+		return "", "", fmt.Errorf("failed to encode private key: %w", err)
+	}
+
+	// Encode public key to PEM
+	publicKeyPEM := &pem.Block{
+		Type:  "RSA PUBLIC KEY",
+		Bytes: x509.MarshalPKCS1PublicKey(&privateKey.PublicKey),
+	}
+
+	publicKeyPath = filepath.Join(keyDir, "translator-signing-key.pub")
+	publicFile, err := os.OpenFile(publicKeyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create public key file: %w", err)
+	}
+	defer publicFile.Close()
+
+	if err := pem.Encode(publicFile, publicKeyPEM); err != nil {
+		return "", "", fmt.Errorf("failed to encode public key: %w", err)
+	}
+
+	return privateKeyPath, publicKeyPath, nil
+}
+
+// createSignedUpdatePackage creates and signs an update package
+func (vm *VersionManager) createSignedUpdatePackage(privateKeyPath string) (*SignedUpdatePackage, error) {
+	// Create the update package
+	packagePath, err := vm.createUpdatePackage()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create update package: %w", err)
+	}
+
+	// Sign the package
+	signaturePath, err := vm.signUpdatePackage(packagePath, privateKeyPath)
+	if err != nil {
+		os.Remove(packagePath) // Clean up on failure
+		return nil, fmt.Errorf("failed to sign update package: %w", err)
+	}
+
+	// Get public key path (assume it's alongside private key)
+	publicKeyPath := strings.TrimSuffix(privateKeyPath, ".pem") + ".pub"
+
+	signedPackage := &SignedUpdatePackage{
+		PackagePath:   packagePath,
+		SignaturePath: signaturePath,
+		PublicKeyPath: publicKeyPath,
+		Version:       vm.localVersion.CodebaseVersion,
+		Timestamp:     time.Now(),
+	}
+
+	return signedPackage, nil
+}
+
+// uploadSignatureFiles uploads signature and public key files to the worker
+func (vm *VersionManager) uploadSignatureFiles(ctx context.Context, service *RemoteService, signedPackage *SignedUpdatePackage) error {
+	// Upload signature file
+	if err := vm.uploadFileToWorker(ctx, service, signedPackage.SignaturePath, "signature"); err != nil {
+		return fmt.Errorf("failed to upload signature file: %w", err)
+	}
+
+	// Upload public key file
+	if err := vm.uploadFileToWorker(ctx, service, signedPackage.PublicKeyPath, "public_key"); err != nil {
+		return fmt.Errorf("failed to upload public key file: %w", err)
+	}
+
+	return nil
+}
+
+// uploadFileToWorker uploads a file to the worker with a specific type
+func (vm *VersionManager) uploadFileToWorker(ctx context.Context, service *RemoteService, filePath, fileType string) error {
+	var uploadURL string
+	if vm.baseURL != "" {
+		uploadURL = fmt.Sprintf("%s/api/v1/update/upload/%s", vm.baseURL, fileType)
+	} else {
+		uploadURL = fmt.Sprintf("%s://%s:%d/api/v1/update/upload/%s", service.Protocol, service.Host, service.Port, fileType)
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", uploadURL, file)
+	if err != nil {
+		return fmt.Errorf("failed to create upload request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("X-File-Type", fileType)
+	req.Header.Set("X-Update-Version", vm.localVersion.CodebaseVersion)
+
+	resp, err := vm.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to upload file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("file upload failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }

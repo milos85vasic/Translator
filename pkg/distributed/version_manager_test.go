@@ -950,3 +950,148 @@ func TestVersionManager_RollbackWorkerUpdate_NoBackup(t *testing.T) {
 		t.Errorf("Expected error containing '%s', got: %s", expectedError, err.Error())
 	}
 }
+
+func TestVersionManager_SignatureVerification(t *testing.T) {
+	// Create temporary directory for keys
+	keyDir, err := os.MkdirTemp("", "signature-test-keys")
+	if err != nil {
+		t.Fatalf("Failed to create temp key dir: %v", err)
+	}
+	defer os.RemoveAll(keyDir)
+
+	eventBus := events.NewEventBus()
+	vm := NewVersionManager(eventBus)
+
+	// Generate signing keys
+	privateKeyPath, publicKeyPath, err := vm.generateSigningKeys(keyDir)
+	if err != nil {
+		t.Fatalf("Failed to generate signing keys: %v", err)
+	}
+
+	// Create a test file to sign
+	testFile := filepath.Join(keyDir, "test-package.tar.gz")
+	testContent := "test package content"
+	if err := os.WriteFile(testFile, []byte(testContent), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Sign the test file
+	signaturePath, err := vm.signUpdatePackage(testFile, privateKeyPath)
+	if err != nil {
+		t.Fatalf("Failed to sign package: %v", err)
+	}
+
+	// Verify the signature (should succeed)
+	if err := vm.verifyUpdatePackage(testFile, signaturePath, publicKeyPath); err != nil {
+		t.Errorf("Signature verification failed: %v", err)
+	}
+
+	// Test with tampered file
+	tamperedContent := "tampered content"
+	if err := os.WriteFile(testFile, []byte(tamperedContent), 0644); err != nil {
+		t.Fatalf("Failed to tamper test file: %v", err)
+	}
+
+	// Verify the signature (should fail)
+	if err := vm.verifyUpdatePackage(testFile, signaturePath, publicKeyPath); err == nil {
+		t.Errorf("Signature verification should have failed for tampered file")
+	}
+}
+
+func TestVersionManager_SignedUpdatePackage(t *testing.T) {
+	// Create temporary directory for keys
+	keyDir, err := os.MkdirTemp("", "signed-update-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(keyDir)
+
+	eventBus := events.NewEventBus()
+	vm := NewVersionManager(eventBus)
+	vm.updateDir = keyDir // Use temp dir for updates
+
+	// Generate signing keys
+	privateKeyPath, publicKeyPath, err := vm.generateSigningKeys(keyDir)
+	if err != nil {
+		t.Fatalf("Failed to generate signing keys: %v", err)
+	}
+
+	// Create a signed update package
+	signedPackage, err := vm.createSignedUpdatePackage(privateKeyPath)
+	if err != nil {
+		t.Fatalf("Failed to create signed update package: %v", err)
+	}
+
+	// Verify the package exists
+	if _, err := os.Stat(signedPackage.PackagePath); os.IsNotExist(err) {
+		t.Errorf("Package file was not created")
+	}
+
+	// Verify the signature file exists
+	if _, err := os.Stat(signedPackage.SignaturePath); os.IsNotExist(err) {
+		t.Errorf("Signature file was not created")
+	}
+
+	// Verify the signature
+	if err := vm.verifyUpdatePackage(signedPackage.PackagePath, signedPackage.SignaturePath, publicKeyPath); err != nil {
+		t.Errorf("Signed package verification failed: %v", err)
+	}
+
+	// Verify package metadata
+	if signedPackage.Version != vm.GetLocalVersion().CodebaseVersion {
+		t.Errorf("Package version mismatch: expected %s, got %s", vm.GetLocalVersion().CodebaseVersion, signedPackage.Version)
+	}
+}
+
+func TestVersionManager_KeyGeneration(t *testing.T) {
+	// Create temporary directory for keys
+	keyDir, err := os.MkdirTemp("", "keygen-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(keyDir)
+
+	eventBus := events.NewEventBus()
+	vm := NewVersionManager(eventBus)
+
+	// Generate keys
+	privateKeyPath, publicKeyPath, err := vm.generateSigningKeys(keyDir)
+	if err != nil {
+		t.Fatalf("Failed to generate keys: %v", err)
+	}
+
+	// Verify private key file exists and has correct permissions
+	privateInfo, err := os.Stat(privateKeyPath)
+	if err != nil {
+		t.Fatalf("Private key file not created: %v", err)
+	}
+	if privateInfo.Mode().Perm() != 0600 {
+		t.Errorf("Private key has incorrect permissions: %v", privateInfo.Mode().Perm())
+	}
+
+	// Verify public key file exists
+	publicInfo, err := os.Stat(publicKeyPath)
+	if err != nil {
+		t.Fatalf("Public key file not created: %v", err)
+	}
+	if publicInfo.Mode().Perm() != 0644 {
+		t.Errorf("Public key has incorrect permissions: %v", publicInfo.Mode().Perm())
+	}
+
+	// Verify key files contain valid PEM data
+	privateData, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		t.Fatalf("Failed to read private key: %v", err)
+	}
+	if !strings.Contains(string(privateData), "-----BEGIN RSA PRIVATE KEY-----") {
+		t.Errorf("Private key file does not contain valid PEM header")
+	}
+
+	publicData, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		t.Fatalf("Failed to read public key: %v", err)
+	}
+	if !strings.Contains(string(publicData), "-----BEGIN RSA PUBLIC KEY-----") {
+		t.Errorf("Public key file does not contain valid PEM header")
+	}
+}

@@ -28,19 +28,12 @@
   "distributed": {
     "enabled": true,
     "workers": {
-      "worker-1": {
-        "name": "Worker Instance 1",
-        "host": "translator-worker-1",
-        "port": 8443,
-        "user": "root",
-        "max_capacity": 5,
-        "enabled": true
-      },
-      "worker-2": {
-        "name": "Worker Instance 2",
-        "host": "translator-worker-2",
-        "port": 8443,
-        "user": "root",
+      "localhost-worker": {
+        "name": "Local Test Worker",
+        "host": "localhost",
+        "port": 8444,
+        "user": "local",
+        "password": "dummy",
         "max_capacity": 5,
         "enabled": true
       }

@@ -28,6 +28,7 @@ translator [options] -input <file>
   - `zhipu` - Zhipu AI GLM-4 models
   - `deepseek` - DeepSeek models
   - `qwen` - Alibaba Qwen models
+  - `gemini` - Google Gemini models
   - `ollama` - Local Ollama models
   - `llamacpp` - Local llama.cpp models
   - `multi-llm` - Multi-LLM coordinator (uses multiple providers)
@@ -62,6 +63,7 @@ When using `-provider multi-llm`, additional options control LLM provider select
 - `ZHIPU_API_KEY` - Zhipu AI API key
 - `DEEPSEEK_API_KEY` - DeepSeek API key
 - `QWEN_API_KEY` - Qwen (Alibaba Cloud) API key
+- `GEMINI_API_KEY` - Google Gemini API key
 
 ### Local LLM Configuration
 - `OLLAMA_ENABLED` - Enable Ollama integration ("true" to enable)
@@ -99,6 +101,10 @@ translator -input book.epub -provider zhipu
 # DeepSeek
 export DEEPSEEK_API_KEY="your-key"
 translator -input book.epub -provider deepseek
+
+# Google Gemini
+export GEMINI_API_KEY="your-key"
+translator -input book.epub -provider gemini -model gemini-pro
 
 # Local Ollama
 translator -input book.epub -provider ollama -model llama3:8b

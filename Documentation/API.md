@@ -2,8 +2,8 @@
 
 Complete API documentation for the Universal Ebook Translator service.
 
-**Version:** 2.2.0
-**Last Updated:** 2025-11-20
+**Version:** 2.3.0
+**Last Updated:** 2025-11-22
 
 ## Overview
 
@@ -525,6 +525,19 @@ export DEEPSEEK_API_KEY="your-key"
 }
 ```
 
+### Gemini Provider
+
+```bash
+export GEMINI_API_KEY="your-key"
+```
+
+```json
+{
+  "provider": "gemini",
+  "model": "gemini-pro"
+}
+```
+
 ### Ollama Provider (Local)
 
 Requires Ollama running locally:
@@ -571,6 +584,19 @@ X-RateLimit-Reset: 1642251600
 ```
 
 ## Version History
+
+### v2.3.0 (2025-11-22)
+**New Features:**
+- Google Gemini LLM provider support
+- Enhanced production monitoring and alerting system
+- Production-ready configuration templates
+- Comprehensive health checking and metrics collection
+
+**Improvements:**
+- Added Gemini provider with full API integration
+- Production monitoring script with webhook/Slack/email alerts
+- Environment variable-based configuration templates
+- Enhanced Makefile with monitoring targets
 
 ### v2.2.0 (2025-11-20)
 **New Endpoints:**

@@ -39,6 +39,10 @@ help:
 	@echo "  stop-deployment    - Stop deployment"
 	@echo "  status             - Check deployment status"
 	@echo "  plan               - Generate deployment plan"
+	@echo "  monitor            - Run production monitoring checks"
+	@echo "  monitor-continuous - Start continuous monitoring"
+	@echo "  monitor-health     - Quick health check"
+	@echo "  monitor-metrics    - Collect system metrics"
 
 # Build targets
 build: build-cli build-server
@@ -173,4 +177,23 @@ plan: build-deployment
 test-deployment:
 	@echo "Running deployment tests..."
 	$(GO) test -v ./pkg/deployment/...
+
+# Monitoring targets
+.PHONY: monitor monitor-continuous monitor-health monitor-metrics
+
+monitor:
+	@echo "Running production monitoring..."
+	./scripts/monitor-production.sh once
+
+monitor-continuous:
+	@echo "Starting continuous monitoring..."
+	./scripts/monitor-production.sh continuous
+
+monitor-health:
+	@echo "Running health checks..."
+	./scripts/monitor-production.sh health
+
+monitor-metrics:
+	@echo "Collecting metrics..."
+	./scripts/monitor-production.sh metrics
 	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_SERVER)-windows-amd64.exe ./cmd/server

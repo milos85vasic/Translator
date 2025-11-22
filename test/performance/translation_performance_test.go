@@ -1,3 +1,4 @@
+//go:build performance
 // +build performance
 
 package performance
@@ -45,8 +46,6 @@ func BenchmarkDictionaryTranslation(b *testing.B) {
 // BenchmarkBookTranslation benchmarks full book translation
 func BenchmarkBookTranslation(b *testing.B) {
 	ctx := context.Background()
-
-	book := createTestBook(10, 5) // 10 chapters, 5 sections each
 
 	translatorConfig := translator.TranslationConfig{
 		SourceLang: "en",
@@ -411,7 +410,7 @@ func createTestBook(numChapters, numSections int) *ebook.Book {
 	return &ebook.Book{
 		Metadata: ebook.Metadata{
 			Title:       "Test Book",
-			Author:      "Test Author",
+			Authors:     []string{"Test Author"},
 			Description: "A test book for performance testing",
 			Language:    "en",
 		},
@@ -439,7 +438,7 @@ func createTranslatedBook(numChapters, numSections int) *ebook.Book {
 	return &ebook.Book{
 		Metadata: ebook.Metadata{
 			Title:       "Преведена књига",
-			Author:      "Аутор теста",
+			Authors:     []string{"Аутор теста"},
 			Description: "Преведена књига за тестирање перформанси",
 			Language:    "sr",
 		},

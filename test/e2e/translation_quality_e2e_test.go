@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 package e2e
@@ -30,11 +31,11 @@ func TestProjectGutenbergTranslation(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
 
-	t.Run("TranslateRussianToSerbian_TXT", func(t *testing.T) {
+	t.Run("TranslateRussianToSerbian_EPUB", func(t *testing.T) {
 		// Download Russian book from Project Gutenberg
-		// "The Gambler" by Dostoevsky (Russian)
-		bookURL := "https://www.gutenberg.org/cache/epub/2197/pg2197.txt"
-		bookPath := filepath.Join(tmpDir, "gambler_ru.txt")
+		// "The Gambler" by Dostoevsky (Russian) - using EPUB format
+		bookURL := "https://www.gutenberg.org/cache/epub/2197/pg2197-images.epub"
+		bookPath := filepath.Join(tmpDir, "gambler_ru.epub")
 
 		if err := downloadFile(bookURL, bookPath); err != nil {
 			t.Fatalf("Failed to download book: %v", err)
@@ -49,8 +50,8 @@ func TestProjectGutenbergTranslation(t *testing.T) {
 		t.Logf("Downloaded book: %d bytes", info.Size())
 
 		// Parse the book
-		reader := ebook.NewTXTReader()
-		book, err := reader.Read(bookPath)
+		reader := ebook.NewEPUBParser()
+		book, err := reader.Parse(bookPath)
 		if err != nil {
 			t.Fatalf("Failed to parse book: %v", err)
 		}
@@ -101,8 +102,8 @@ func TestProjectGutenbergTranslation(t *testing.T) {
 		}
 
 		// Write translated book
-		outputPath := filepath.Join(tmpDir, "gambler_sr.txt")
-		writer := ebook.NewTXTWriter()
+		outputPath := filepath.Join(tmpDir, "gambler_sr.epub")
+		writer := ebook.NewEPUBWriter()
 		if err := writer.Write(book, outputPath); err != nil {
 			t.Fatalf("Failed to write translated book: %v", err)
 		}
@@ -121,8 +122,8 @@ func TestProjectGutenbergTranslation(t *testing.T) {
 		}
 
 		// Parse the book
-		reader := ebook.NewEPUBReader()
-		book, err := reader.Read(bookPath)
+		reader := ebook.NewEPUBParser()
+		book, err := reader.Parse(bookPath)
 		if err != nil {
 			t.Fatalf("Failed to parse EPUB: %v", err)
 		}
@@ -188,7 +189,7 @@ func TestMultiLLMCoordinationE2E(t *testing.T) {
 
 	// Track events
 	receivedEvents := make([]events.Event, 0)
-	eventBus.Subscribe(func(event events.Event) {
+	eventBus.SubscribeAll(func(event events.Event) {
 		receivedEvents = append(receivedEvents, event)
 	})
 
@@ -283,7 +284,7 @@ func TestFullPipelineWithVerification(t *testing.T) {
 		book := &ebook.Book{
 			Metadata: ebook.Metadata{
 				Title:       "Test Book",
-				Author:      "Test Author",
+				Authors:     []string{"Test Author"},
 				Description: "A test book for translation",
 				Language:    "en",
 			},
@@ -321,8 +322,8 @@ func TestFullPipelineWithVerification(t *testing.T) {
 		}
 
 		// Read it back
-		reader := ebook.NewEPUBReader()
-		loadedBook, err := reader.Read(originalPath)
+		reader := ebook.NewEPUBParser()
+		loadedBook, err := reader.Parse(originalPath)
 		if err != nil {
 			t.Fatalf("Failed to read book: %v", err)
 		}
@@ -345,7 +346,7 @@ func TestFullPipelineWithVerification(t *testing.T) {
 
 		// Track progress events
 		progressEvents := 0
-		eventBus.Subscribe(func(event events.Event) {
+		eventBus.SubscribeAll(func(event events.Event) {
 			if event.Type == events.EventTranslationProgress {
 				progressEvents++
 			}
@@ -426,7 +427,7 @@ func TestErrorRecovery(t *testing.T) {
 
 		eventBus := events.NewEventBus()
 		errorEvents := 0
-		eventBus.Subscribe(func(event events.Event) {
+		eventBus.SubscribeAll(func(event events.Event) {
 			if event.Type == events.EventTranslationError {
 				errorEvents++
 			}

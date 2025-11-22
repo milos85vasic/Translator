@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package integration
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"digital.vasic.translator/internal/cache"
 	"digital.vasic.translator/internal/config"
@@ -33,7 +35,7 @@ func setupTestAPI() (*gin.Engine, *api.Handler, *events.EventBus) {
 	authService := security.NewAuthService("test-secret", 24*time.Hour)
 	wsHub := websocket.NewHub(eventBus)
 
-	handler := api.NewHandler(cfg, eventBus, cacheStore, authService, wsHub)
+	handler := api.NewHandler(cfg, eventBus, cacheStore, authService, wsHub, nil)
 
 	router := gin.New()
 	v1 := router.Group("/api/v1")

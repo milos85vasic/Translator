@@ -17,6 +17,7 @@ help:
 	@echo "  build              - Build CLI and server binaries"
 	@echo "  build-cli          - Build CLI binary only"
 	@echo "  build-server       - Build server binary only"
+	@echo "  build-deployment   - Build deployment CLI"
 	@echo "  clean              - Remove build artifacts"
 	@echo "  test               - Run all tests"
 	@echo "  test-unit          - Run unit tests"
@@ -24,6 +25,7 @@ help:
 	@echo "  test-e2e           - Run end-to-end tests"
 	@echo "  test-performance   - Run performance tests"
 	@echo "  test-stress        - Run stress tests"
+	@echo "  test-deployment    - Run deployment tests"
 	@echo "  run-cli            - Run CLI application"
 	@echo "  run-server         - Run server application"
 	@echo "  install            - Install binaries to GOPATH/bin"
@@ -33,6 +35,10 @@ help:
 	@echo "  docker-build       - Build Docker image"
 	@echo "  docker-run         - Run Docker container"
 	@echo "  generate-certs     - Generate self-signed TLS certificates"
+	@echo "  deploy             - Deploy distributed system"
+	@echo "  stop-deployment    - Stop deployment"
+	@echo "  status             - Check deployment status"
+	@echo "  plan               - Generate deployment plan"
 
 # Build targets
 build: build-cli build-server
@@ -46,6 +52,11 @@ build-server:
 	@echo "Building server..."
 	@mkdir -p $(BUILD_DIR)
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_SERVER) ./cmd/server
+
+build-deployment:
+	@echo "Building deployment CLI..."
+	@mkdir -p $(BUILD_DIR)
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/deployment-cli ./cmd/deployment
 
 # Clean
 clean:
@@ -137,10 +148,29 @@ build-all:
 	@echo "Building for multiple platforms..."
 	@mkdir -p $(BUILD_DIR)
 	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_CLI)-linux-amd64 ./cmd/cli
-	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_SERVER)-linux-amd64 ./cmd/server
 	GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_CLI)-darwin-amd64 ./cmd/cli
-	GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_SERVER)-darwin-amd64 ./cmd/server
-	GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_CLI)-darwin-arm64 ./cmd/cli
-	GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_SERVER)-darwin-arm64 ./cmd/server
 	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_CLI)-windows-amd64.exe ./cmd/cli
+
+# Deployment targets
+.PHONY: deploy stop-deployment status plan test-deployment
+
+deploy: build-deployment
+	@echo "Deploying distributed system..."
+	./build/deployment-cli -action deploy -plan deployment-plan.json
+
+stop-deployment: build-deployment
+	@echo "Stopping deployment..."
+	./build/deployment-cli -action stop
+
+status: build-deployment
+	@echo "Checking deployment status..."
+	./build/deployment-cli -action status
+
+plan: build-deployment
+	@echo "Generating deployment plan..."
+	./build/deployment-cli -action generate-plan
+
+test-deployment:
+	@echo "Running deployment tests..."
+	$(GO) test -v ./pkg/deployment/...
 	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_SERVER)-windows-amd64.exe ./cmd/server

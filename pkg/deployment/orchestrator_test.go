@@ -90,7 +90,15 @@ func TestDeploymentOrchestrator_ValidateDeploymentPlan(t *testing.T) {
 					ContainerName: "test-main",
 					Ports:         []PortMapping{{HostPort: 8443, ContainerPort: 8443}},
 				},
-				Workers: []*DeploymentConfig{},
+				Workers: []*DeploymentConfig{
+					{
+						Host:          "localhost",
+						User:          "test",
+						DockerImage:   "test:latest",
+						ContainerName: "test-worker-1",
+						Ports:         []PortMapping{{HostPort: 8444, ContainerPort: 8443}},
+					},
+				},
 			},
 			wantErr: false,
 		},

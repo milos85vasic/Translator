@@ -1,0 +1,95 @@
+{
+  "main": {
+    "Host": "localhost",
+    "User": "translator",
+    "SSHKeyPath": "/path/to/ssh/key",
+    "DockerImage": "translator:latest",
+    "ContainerName": "translator-main",
+    "Ports": [
+      {
+        "HostPort": 8443,
+        "ContainerPort": 8443,
+        "Protocol": "tcp"
+      }
+    ],
+    "Environment": {
+      "JWT_SECRET": "main-server-secret"
+    },
+    "Volumes": [
+      {
+        "HostPath": "./certs",
+        "ContainerPath": "/app/certs",
+        "ReadOnly": true
+      },
+      {
+        "HostPath": "./config.distributed.json",
+        "ContainerPath": "/app/config.json",
+        "ReadOnly": true
+      }
+    ],
+    "Networks": [
+      "translator-network"
+    ],
+    "RestartPolicy": "unless-stopped",
+    "HealthCheck": {
+      "Test": [
+        "CMD",
+        "curl",
+        "-f",
+        "https://localhost:8443/health"
+      ],
+      "Interval": 30000000000,
+      "Timeout": 10000000000,
+      "Retries": 3,
+      "StartPeriod": 0
+    }
+  },
+  "workers": [
+    {
+      "Host": "localhost",
+      "User": "local",
+      "SSHKeyPath": "",
+      "DockerImage": "translator:latest",
+      "ContainerName": "translator-worker-localhost-worker",
+      "Ports": [
+        {
+          "HostPort": 8444,
+          "ContainerPort": 8443,
+          "Protocol": "tcp"
+        }
+      ],
+      "Environment": {
+        "JWT_SECRET": "worker-localhost-worker-secret",
+        "WORKER_INDEX": "1"
+      },
+      "Volumes": [
+        {
+          "HostPath": "./certs",
+          "ContainerPath": "/app/certs",
+          "ReadOnly": true
+        },
+        {
+          "HostPath": "./config.worker.json",
+          "ContainerPath": "/app/config.json",
+          "ReadOnly": true
+        }
+      ],
+      "Networks": [
+        "translator-network"
+      ],
+      "RestartPolicy": "unless-stopped",
+      "HealthCheck": {
+        "Test": [
+          "CMD",
+          "curl",
+          "-f",
+          "https://localhost:8443/health"
+        ],
+        "Interval": 30000000000,
+        "Timeout": 10000000000,
+        "Retries": 3,
+        "StartPeriod": 0
+      }
+    }
+  ]
+}

@@ -2,6 +2,8 @@ package deployment
 
 import (
 	"context"
+	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -10,7 +12,8 @@ import (
 
 func TestNetworkDiscoverer_Discovery(t *testing.T) {
 	cfg := &config.Config{}
-	discoverer := NewNetworkDiscoverer(cfg, nil)
+	logger := log.New(os.Stdout, "[TEST] ", log.LstdFlags)
+	discoverer := NewNetworkDiscoverer(cfg, logger)
 	defer discoverer.Close()
 
 	// Test starting discovery
@@ -34,7 +37,8 @@ func TestNetworkDiscoverer_Discovery(t *testing.T) {
 
 func TestNetworkDiscoverer_Broadcasting(t *testing.T) {
 	cfg := &config.Config{}
-	discoverer := NewNetworkDiscoverer(cfg, nil)
+	logger := log.New(os.Stdout, "[TEST] ", log.LstdFlags)
+	discoverer := NewNetworkDiscoverer(cfg, logger)
 	defer discoverer.Close()
 
 	// Create mock instances
@@ -82,7 +86,8 @@ func TestNetworkDiscoverer_ServiceTypeDetermination(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.instanceID, func(t *testing.T) {
 			cfg := &config.Config{}
-			discoverer := NewNetworkDiscoverer(cfg, nil)
+			logger := log.New(os.Stdout, "[TEST] ", log.LstdFlags)
+			discoverer := NewNetworkDiscoverer(cfg, logger)
 
 			result := discoverer.determineServiceType(tt.instanceID)
 			if result != tt.expected {
@@ -122,7 +127,8 @@ func TestNetworkDiscoverer_Contains(t *testing.T) {
 
 func TestNetworkService_TTL(t *testing.T) {
 	cfg := &config.Config{}
-	discoverer := NewNetworkDiscoverer(cfg, nil)
+	logger := log.New(os.Stdout, "[TEST] ", log.LstdFlags)
+	discoverer := NewNetworkDiscoverer(cfg, logger)
 	defer discoverer.Close()
 
 	// Add a service manually

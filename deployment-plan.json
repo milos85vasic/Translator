@@ -46,11 +46,11 @@
   },
   "workers": [
     {
-      "Host": "localhost",
-      "User": "local",
+      "Host": "thinker.local",
+      "User": "milosvasic",
       "SSHKeyPath": "",
       "DockerImage": "translator:latest",
-      "ContainerName": "translator-worker-localhost-worker",
+      "ContainerName": "translator-worker-thinker-worker",
       "Ports": [
         {
           "HostPort": 8444,
@@ -59,7 +59,7 @@
         }
       ],
       "Environment": {
-        "JWT_SECRET": "worker-localhost-worker-secret",
+        "JWT_SECRET": "worker-thinker-worker-secret",
         "WORKER_INDEX": "1"
       },
       "Volumes": [

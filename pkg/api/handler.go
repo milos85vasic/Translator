@@ -487,6 +487,15 @@ func (h *Handler) createTranslator(providerName, model string) (translator.Trans
 		providerName = h.config.Translation.DefaultProvider
 	}
 
+	// Handle distributed provider specially
+	if providerName == "distributed" {
+		if h.distributedManager == nil {
+			return nil, fmt.Errorf("distributed translation not available")
+		}
+		// Return a special distributed translator wrapper
+		return &distributedTranslator{dm: h.distributedManager.(*distributed.DistributedManager)}, nil
+	}
+
 	config := translator.TranslationConfig{
 		SourceLang: "ru",
 		TargetLang: "sr",
@@ -510,6 +519,29 @@ func (h *Handler) createTranslator(providerName, model string) (translator.Trans
 	}
 
 	return llm.NewLLMTranslator(config)
+}
+
+// distributedTranslator wraps the distributed manager to implement translator.Translator interface
+type distributedTranslator struct {
+	dm *distributed.DistributedManager
+}
+
+func (dt *distributedTranslator) Translate(ctx context.Context, text, contextHint string) (string, error) {
+	return dt.dm.TranslateDistributed(ctx, text, contextHint)
+}
+
+func (dt *distributedTranslator) TranslateWithProgress(ctx context.Context, text, contextHint string, eventBus *events.EventBus, sessionID string) (string, error) {
+	// For now, just call Translate - progress events could be added later
+	return dt.Translate(ctx, text, contextHint)
+}
+
+func (dt *distributedTranslator) GetStats() translator.TranslationStats {
+	// Return empty stats for now
+	return translator.TranslationStats{}
+}
+
+func (dt *distributedTranslator) GetName() string {
+	return "distributed"
 }
 
 func (h *Handler) translateBook(ctx context.Context, book *fb2.FictionBook, trans translator.Translator, sessionID string) error {

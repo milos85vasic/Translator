@@ -25,17 +25,18 @@
     "max_concurrent": 5,
     "providers": {}
   },
-  "distributed": {
+   "distributed": {
     "enabled": true,
     "workers": {
-      "localhost-worker": {
-        "name": "Local Test Worker",
-        "host": "localhost",
-        "port": 8444,
-        "user": "local",
-        "password": "dummy",
-        "max_capacity": 5,
-        "enabled": true
+      "thinker-worker": {
+        "name": "Remote Llama.cpp Worker",
+        "host": "thinker.local",
+        "port": 22,
+        "user": "milosvasic",
+        "password": "WhiteSnake8587",
+        "max_capacity": 10,
+        "enabled": true,
+        "tags": ["gpu", "llamacpp"]
       }
     },
     "ssh_timeout": 30,

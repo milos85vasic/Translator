@@ -149,16 +149,14 @@ func (p *EPUBParser) CleanXMLData(data []byte) []byte {
 
 	// Fix common XML issues
 	cleanedStr := cleaned.String()
-
-	// Ensure proper XML declaration
-	if !strings.Contains(cleanedStr, "<?xml") {
-		cleanedStr = `<?xml version="1.0" encoding="UTF-8"?>` + "\n" + cleanedStr
-	}
-
-	// Fix unescaped ampersands (simple approach - may need refinement)
 	cleanedStr = strings.ReplaceAll(cleanedStr, "& ", "&amp; ")
 	cleanedStr = strings.ReplaceAll(cleanedStr, "&<", "&lt;")
 	cleanedStr = strings.ReplaceAll(cleanedStr, "&>", "&gt;")
+	// Fix common invalid entities
+	cleanedStr = strings.ReplaceAll(cleanedStr, "&q", "&quot;")
+	cleanedStr = strings.ReplaceAll(cleanedStr, "&a", "&amp;")
+	cleanedStr = strings.ReplaceAll(cleanedStr, "&l", "&lt;")
+	cleanedStr = strings.ReplaceAll(cleanedStr, "&g", "&gt;")
 
 	return []byte(cleanedStr)
 }

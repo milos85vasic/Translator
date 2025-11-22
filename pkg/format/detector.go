@@ -1,6 +1,7 @@
 package format
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
 	"io"
@@ -132,9 +133,47 @@ func (d *Detector) disambiguateZipFormat(filename string, ext string) (Format, e
 		return FormatDOCX, nil
 	}
 
-	// For now, assume EPUB if it's a ZIP and has .epub extension
-	// In a full implementation, we'd check for mimetype file inside ZIP
+	// Check mimetype file inside ZIP
+	mimetype, err := d.getZipMimetype(filename)
+	if err == nil {
+		switch mimetype {
+		case "application/epub+zip":
+			return FormatEPUB, nil
+		case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+			return FormatDOCX, nil
+		}
+	}
+
+	// Default to EPUB for unknown ZIP formats
 	return FormatEPUB, nil
+}
+
+// getZipMimetype reads the mimetype file from a ZIP archive
+func (d *Detector) getZipMimetype(filename string) (string, error) {
+	r, err := zip.OpenReader(filename)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		if f.Name == "mimetype" {
+			rc, err := f.Open()
+			if err != nil {
+				return "", err
+			}
+			defer rc.Close()
+
+			data, err := io.ReadAll(rc)
+			if err != nil {
+				return "", err
+			}
+
+			return strings.TrimSpace(string(data)), nil
+		}
+	}
+
+	return "", fmt.Errorf("mimetype file not found")
 }
 
 // detectByContent detects format by analyzing content

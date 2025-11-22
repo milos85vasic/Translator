@@ -1,0 +1,187 @@
+version: '3.8'
+
+services:
+  # Main translation server (root instance)
+  translator-main:
+    build: .
+    ports:
+      - "8443:8443"
+      - "8080:8080"
+    environment:
+      - JWT_SECRET=main-server-secret-key
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ZHIPU_API_KEY=${ZHIPU_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./config.distributed.json:/app/config.json:ro
+    networks:
+      - translator-network
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Worker instance 1
+  translator-worker-1:
+    build: .
+    ports:
+      - "8444:8443"
+    environment:
+      - JWT_SECRET=worker-1-secret-key
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ZHIPU_API_KEY=${ZHIPU_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - OLLAMA_ENABLED=true
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./config.worker.json:/app/config.json:ro
+    networks:
+      - translator-network
+    depends_on:
+      - postgres
+      - redis
+      - ollama-worker-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Worker instance 2
+  translator-worker-2:
+    build: .
+    ports:
+      - "8445:8443"
+    environment:
+      - JWT_SECRET=worker-2-secret-key
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ZHIPU_API_KEY=${ZHIPU_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - OLLAMA_ENABLED=true
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./config.worker.json:/app/config.json:ro
+    networks:
+      - translator-network
+    depends_on:
+      - postgres
+      - redis
+      - ollama-worker-2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Ollama service for worker 1
+  ollama-worker-1:
+    image: ollama/ollama:latest
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama-data-1:/root/.ollama
+    networks:
+      - translator-network
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: ["serve"]
+
+  # Ollama service for worker 2
+  ollama-worker-2:
+    image: ollama/ollama:latest
+    ports:
+      - "11436:11434"
+    volumes:
+      - ollama-data-2:/root/.ollama
+    networks:
+      - translator-network
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: ["serve"]
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=translator
+      - POSTGRES_PASSWORD=secure_password
+      - POSTGRES_DB=translator
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - translator-network
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U translator -d translator"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass redis_secure_password
+    volumes:
+      - redis-data:/data
+    networks:
+      - translator-network
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Test runner service
+  distributed-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - MAIN_SERVER_URL=https://translator-main:8443
+      - WORKER_1_URL=https://translator-worker-1:8443
+      - WORKER_2_URL=https://translator-worker-2:8443
+    volumes:
+      - ./test:/app/test:ro
+      - ./certs:/app/certs:ro
+    networks:
+      - translator-network
+    depends_on:
+      translator-main:
+        condition: service_healthy
+      translator-worker-1:
+        condition: service_healthy
+      translator-worker-2:
+        condition: service_healthy
+    command: ["go", "test", "-v", "-tags=distributed", "./test/distributed/..."]
+
+networks:
+  translator-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  ollama-data-1:
+  ollama-data-2:

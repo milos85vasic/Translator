@@ -6,6 +6,7 @@ import (
 	"digital.vasic.translator/internal/cache"
 	"digital.vasic.translator/internal/config"
 	"digital.vasic.translator/pkg/api"
+	"digital.vasic.translator/pkg/distributed"
 	"digital.vasic.translator/pkg/events"
 	"digital.vasic.translator/pkg/security"
 	"digital.vasic.translator/pkg/websocket"
@@ -62,6 +63,12 @@ func main() {
 	rateLimiter := security.NewRateLimiter(cfg.Security.RateLimitRPS, cfg.Security.RateLimitBurst)
 	wsHub := websocket.NewHub(eventBus)
 
+	// Initialize distributed manager if enabled
+	var distributedManager interface{}
+	if cfg.Distributed.Enabled {
+		distributedManager = distributed.NewDistributedManager(cfg, eventBus)
+	}
+
 	// Start WebSocket hub
 	go wsHub.Run()
 
@@ -77,7 +84,7 @@ func main() {
 	router.Use(rateLimitMiddleware(rateLimiter))
 
 	// Create API handler
-	apiHandler := api.NewHandler(cfg, eventBus, translationCache, authService, wsHub)
+	apiHandler := api.NewHandler(cfg, eventBus, translationCache, authService, wsHub, distributedManager)
 	apiHandler.RegisterRoutes(router)
 
 	// Server configuration

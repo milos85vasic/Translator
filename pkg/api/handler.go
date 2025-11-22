@@ -4,6 +4,7 @@ import (
 	"context"
 	"digital.vasic.translator/internal/cache"
 	"digital.vasic.translator/internal/config"
+	"digital.vasic.translator/pkg/distributed"
 	"digital.vasic.translator/pkg/events"
 	"digital.vasic.translator/pkg/fb2"
 	"digital.vasic.translator/pkg/script"
@@ -24,11 +25,12 @@ import (
 
 // Handler handles API requests
 type Handler struct {
-	config      *config.Config
-	eventBus    *events.EventBus
-	cache       *cache.Cache
-	authService *security.AuthService
-	wsHub       *websocket.Hub
+	config             *config.Config
+	eventBus           *events.EventBus
+	cache              *cache.Cache
+	authService        *security.AuthService
+	wsHub              *websocket.Hub
+	distributedManager interface{} // Will be *distributed.DistributedManager
 }
 
 // NewHandler creates a new API handler
@@ -38,13 +40,15 @@ func NewHandler(
 	cache *cache.Cache,
 	authService *security.AuthService,
 	wsHub *websocket.Hub,
+	distributedManager interface{},
 ) *Handler {
 	return &Handler{
-		config:      cfg,
-		eventBus:    eventBus,
-		cache:       cache,
-		authService: authService,
-		wsHub:       wsHub,
+		config:             cfg,
+		eventBus:           eventBus,
+		cache:              cache,
+		authService:        authService,
+		wsHub:              wsHub,
+		distributedManager: distributedManager,
 	}
 }
 
@@ -72,6 +76,15 @@ func (h *Handler) RegisterRoutes(router *gin.Engine) {
 		v1.GET("/status/:session_id", h.getStatus)
 		v1.GET("/providers", h.listProviders)
 		v1.GET("/stats", h.getStats)
+
+		// Distributed work endpoints
+		if h.config.Distributed.Enabled {
+			v1.GET("/distributed/status", h.getDistributedStatus)
+			v1.POST("/distributed/workers/discover", h.discoverWorkers)
+			v1.POST("/distributed/workers/:worker_id/pair", h.pairWorker)
+			v1.DELETE("/distributed/workers/:worker_id/pair", h.unpairWorker)
+			v1.POST("/distributed/translate", h.translateDistributed)
+		}
 
 		// Authentication (if enabled)
 		if h.config.Security.EnableAuth {
@@ -104,11 +117,11 @@ func (h *Handler) apiInfo(c *gin.Context) {
 		"version":     "1.0.0",
 		"description": "High-quality Russian to Serbian translation service with multiple LLM providers",
 		"endpoints": gin.H{
-			"health":      "GET /health",
-			"websocket":   "GET /ws",
-			"translate":   "POST /api/v1/translate",
+			"health":       "GET /health",
+			"websocket":    "GET /ws",
+			"translate":    "POST /api/v1/translate",
 			"translateFB2": "POST /api/v1/translate/fb2",
-			"providers":   "GET /api/v1/providers",
+			"providers":    "GET /api/v1/providers",
 		},
 		"documentation": "/api/docs",
 	})
@@ -348,39 +361,39 @@ func (h *Handler) getStatus(c *gin.Context) {
 func (h *Handler) listProviders(c *gin.Context) {
 	providers := []gin.H{
 		{
-			"name":        "dictionary",
-			"description": "Simple dictionary-based translation",
+			"name":             "dictionary",
+			"description":      "Simple dictionary-based translation",
 			"requires_api_key": false,
 		},
 		{
-			"name":        "openai",
-			"description": "OpenAI GPT models",
+			"name":             "openai",
+			"description":      "OpenAI GPT models",
 			"requires_api_key": true,
-			"models":      []string{"gpt-4", "gpt-3.5-turbo"},
+			"models":           []string{"gpt-4", "gpt-3.5-turbo"},
 		},
 		{
-			"name":        "anthropic",
-			"description": "Anthropic Claude models",
+			"name":             "anthropic",
+			"description":      "Anthropic Claude models",
 			"requires_api_key": true,
-			"models":      []string{"claude-3-sonnet-20240229", "claude-3-opus-20240229"},
+			"models":           []string{"claude-3-sonnet-20240229", "claude-3-opus-20240229"},
 		},
 		{
-			"name":        "zhipu",
-			"description": "Zhipu AI GLM models",
+			"name":             "zhipu",
+			"description":      "Zhipu AI GLM models",
 			"requires_api_key": true,
-			"models":      []string{"glm-4"},
+			"models":           []string{"glm-4"},
 		},
 		{
-			"name":        "deepseek",
-			"description": "DeepSeek Chat models",
+			"name":             "deepseek",
+			"description":      "DeepSeek Chat models",
 			"requires_api_key": true,
-			"models":      []string{"deepseek-chat"},
+			"models":           []string{"deepseek-chat"},
 		},
 		{
-			"name":        "ollama",
-			"description": "Local Ollama models",
+			"name":             "ollama",
+			"description":      "Local Ollama models",
 			"requires_api_key": false,
-			"models":      []string{"llama3:8b", "llama2:13b"},
+			"models":           []string{"llama3:8b", "llama2:13b"},
 		},
 	}
 
@@ -651,5 +664,141 @@ func (h *Handler) getProfile(c *gin.Context) {
 		"user_id":  userID,
 		"username": username,
 		"roles":    roles,
+	})
+}
+
+// Distributed work handlers
+
+func (h *Handler) getDistributedStatus(c *gin.Context) {
+	if h.distributedManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Distributed work not available"})
+		return
+	}
+
+	// Type assertion to access methods
+	dm, ok := h.distributedManager.(*distributed.DistributedManager)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid distributed manager"})
+		return
+	}
+
+	status := dm.GetStatus()
+	c.JSON(http.StatusOK, status)
+}
+
+func (h *Handler) discoverWorkers(c *gin.Context) {
+	if h.distributedManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Distributed work not available"})
+		return
+	}
+
+	dm, ok := h.distributedManager.(*distributed.DistributedManager)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid distributed manager"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	if err := dm.DiscoverAndPairWorkers(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Worker discovery completed"})
+}
+
+func (h *Handler) pairWorker(c *gin.Context) {
+	if h.distributedManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Distributed work not available"})
+		return
+	}
+
+	workerID := c.Param("worker_id")
+	if workerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Worker ID is required"})
+		return
+	}
+
+	dm, ok := h.distributedManager.(*distributed.DistributedManager)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid distributed manager"})
+		return
+	}
+
+	if err := dm.PairWorker(workerID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Successfully paired with worker %s", workerID)})
+}
+
+func (h *Handler) unpairWorker(c *gin.Context) {
+	if h.distributedManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Distributed work not available"})
+		return
+	}
+
+	workerID := c.Param("worker_id")
+	if workerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Worker ID is required"})
+		return
+	}
+
+	dm, ok := h.distributedManager.(*distributed.DistributedManager)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid distributed manager"})
+		return
+	}
+
+	if err := dm.UnpairWorker(workerID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Successfully unpaired from worker %s", workerID)})
+}
+
+func (h *Handler) translateDistributed(c *gin.Context) {
+	if h.distributedManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Distributed work not available"})
+		return
+	}
+
+	var req struct {
+		Text        string `json:"text" binding:"required"`
+		ContextHint string `json:"context_hint,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	dm, ok := h.distributedManager.(*distributed.DistributedManager)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid distributed manager"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	sessionID := c.GetHeader("X-Session-ID")
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+	}
+
+	translated, err := dm.TranslateDistributed(ctx, req.Text, req.ContextHint)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"translated_text": translated,
+		"session_id":      sessionID,
 	})
 }

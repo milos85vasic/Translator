@@ -8,10 +8,11 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Server     ServerConfig     `json:"server"`
-	Security   SecurityConfig   `json:"security"`
+	Server      ServerConfig      `json:"server"`
+	Security    SecurityConfig    `json:"security"`
 	Translation TranslationConfig `json:"translation"`
-	Logging    LoggingConfig    `json:"logging"`
+	Distributed DistributedConfig `json:"distributed"`
+	Logging     LoggingConfig     `json:"logging"`
 }
 
 // ServerConfig represents server configuration
@@ -28,30 +29,53 @@ type ServerConfig struct {
 
 // SecurityConfig represents security configuration
 type SecurityConfig struct {
-	EnableAuth     bool   `json:"enable_auth"`
-	JWTSecret      string `json:"jwt_secret"`
-	APIKeyHeader   string `json:"api_key_header"`
-	RateLimitRPS   int    `json:"rate_limit_rps"`
-	RateLimitBurst int    `json:"rate_limit_burst"`
+	EnableAuth     bool     `json:"enable_auth"`
+	JWTSecret      string   `json:"jwt_secret"`
+	APIKeyHeader   string   `json:"api_key_header"`
+	RateLimitRPS   int      `json:"rate_limit_rps"`
+	RateLimitBurst int      `json:"rate_limit_burst"`
 	CORSOrigins    []string `json:"cors_origins"`
 }
 
 // TranslationConfig represents translation configuration
 type TranslationConfig struct {
-	DefaultProvider   string            `json:"default_provider"`
-	DefaultModel      string            `json:"default_model"`
-	CacheEnabled      bool              `json:"cache_enabled"`
-	CacheTTL          int               `json:"cache_ttl"`
-	MaxConcurrent     int               `json:"max_concurrent"`
-	Providers         map[string]ProviderConfig `json:"providers"`
+	DefaultProvider string                    `json:"default_provider"`
+	DefaultModel    string                    `json:"default_model"`
+	CacheEnabled    bool                      `json:"cache_enabled"`
+	CacheTTL        int                       `json:"cache_ttl"`
+	MaxConcurrent   int                       `json:"max_concurrent"`
+	Providers       map[string]ProviderConfig `json:"providers"`
 }
 
 // ProviderConfig represents LLM provider configuration
 type ProviderConfig struct {
-	APIKey   string            `json:"api_key,omitempty"`
-	BaseURL  string            `json:"base_url,omitempty"`
-	Model    string            `json:"model"`
-	Options  map[string]interface{} `json:"options,omitempty"`
+	APIKey  string                 `json:"api_key,omitempty"`
+	BaseURL string                 `json:"base_url,omitempty"`
+	Model   string                 `json:"model"`
+	Options map[string]interface{} `json:"options,omitempty"`
+}
+
+// DistributedConfig represents distributed work configuration
+type DistributedConfig struct {
+	Enabled             bool                    `json:"enabled"`
+	Workers             map[string]WorkerConfig `json:"workers"`
+	SSHTimeout          int                     `json:"ssh_timeout"`
+	SSHMaxRetries       int                     `json:"ssh_max_retries"`
+	HealthCheckInterval int                     `json:"health_check_interval"`
+	MaxRemoteInstances  int                     `json:"max_remote_instances"`
+}
+
+// WorkerConfig represents a remote worker configuration
+type WorkerConfig struct {
+	Name        string   `json:"name"`
+	Host        string   `json:"host"`
+	Port        int      `json:"port"`
+	User        string   `json:"user"`
+	KeyFile     string   `json:"key_file,omitempty"`
+	Password    string   `json:"password,omitempty"`
+	MaxCapacity int      `json:"max_capacity"`
+	Tags        []string `json:"tags,omitempty"`
+	Enabled     bool     `json:"enabled"`
 }
 
 // LoggingConfig represents logging configuration
@@ -83,12 +107,20 @@ func DefaultConfig() *Config {
 			CORSOrigins:    []string{"*"},
 		},
 		Translation: TranslationConfig{
-			DefaultProvider:   "dictionary",
-			DefaultModel:      "",
-			CacheEnabled:      true,
-			CacheTTL:          3600,
-			MaxConcurrent:     5,
-			Providers:         make(map[string]ProviderConfig),
+			DefaultProvider: "dictionary",
+			DefaultModel:    "",
+			CacheEnabled:    true,
+			CacheTTL:        3600,
+			MaxConcurrent:   5,
+			Providers:       make(map[string]ProviderConfig),
+		},
+		Distributed: DistributedConfig{
+			Enabled:             false,
+			Workers:             make(map[string]WorkerConfig),
+			SSHTimeout:          30,
+			SSHMaxRetries:       3,
+			HealthCheckInterval: 30,
+			MaxRemoteInstances:  20,
 		},
 		Logging: LoggingConfig{
 			Level:      "info",

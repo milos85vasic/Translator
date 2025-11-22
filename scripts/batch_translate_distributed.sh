@@ -107,7 +107,7 @@ start_main_server() {
     local attempt=1
 
     while [[ $attempt -le $max_attempts ]]; do
-        if curl -f "http://localhost:8443/health" >/dev/null 2>&1; then
+        if curl -f -k "https://localhost:8443/health" >/dev/null 2>&1; then
             log_success "Main server is healthy"
             return 0
         fi
@@ -167,7 +167,7 @@ discover_workers() {
 
     # Make API call to discover workers
     local response
-    response=$(curl -s -X POST "http://localhost:8443/api/v1/distributed/workers/discover" \
+    response=$(curl -s -k -X POST "https://localhost:8443/api/v1/distributed/workers/discover" \
         -H "Content-Type: application/json")
 
     if [[ $? -eq 0 ]]; then
@@ -183,7 +183,7 @@ discover_workers() {
 
     # Check distributed status
     local status
-    status=$(curl -s "http://localhost:8443/api/v1/distributed/status")
+    status=$(curl -s -k "https://localhost:8443/api/v1/distributed/status")
 
     if echo "$status" | grep -q "paired_workers.*[1-9]"; then
         log_success "Workers successfully paired"
@@ -202,7 +202,7 @@ get_books_list() {
         books+=("$file")
     done < <(find "$BOOKS_DIR" -type f \( -name "*.fb2" -o -name "*.epub" -o -name "*.txt" \) -print0)
 
-    echo "${books[@]}"
+    printf '%s\n' "${books[@]}"
 }
 
 # Translate a single book
@@ -225,7 +225,7 @@ translate_book() {
     start_time=$(date +%s)
 
     local response
-    response=$(curl -s -X POST "http://localhost:8443/api/v1/translate/fb2" \
+    response=$(curl -s -k -X POST "https://localhost:8443/api/v1/translate/fb2" \
         -F "file=@$book_path" \
         -F "provider=distributed" \
         -o "$output_path" 2>&1)
@@ -352,7 +352,7 @@ main() {
     start_main_server
 
     # Deploy remote worker
-    # deploy_remote_worker  # Worker already running
+    # deploy_remote_worker  # Using local worker
 
     # Discover and pair workers
     discover_workers
@@ -361,8 +361,10 @@ main() {
     monitor_api_communications
 
     # Get list of books
-    local books
-    books=($(get_books_list))
+    local books=()
+    while IFS= read -r book; do
+        books+=("$book")
+    done < <(get_books_list)
     local total_books=${#books[@]}
 
     log_info "Starting translation of $total_books books..."

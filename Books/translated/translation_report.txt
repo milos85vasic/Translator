@@ -1,11 +1,11 @@
 Translation Report
 ==================
 
-Generated: Sat Nov 22 20:41:30 MSK 2025
-Total books processed: 1
-Successful translations: 1
+Generated: Sat Nov 22 21:27:43 MSK 2025
+Total books processed: 4
+Successful translations: 4
 Failed translations: 0
-Total time: 1s
+Total time: 4s
 Average time per book: 1s
 
 API Communications Summary:

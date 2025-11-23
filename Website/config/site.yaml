@@ -1,0 +1,213 @@
+name: Universal Ebook Translator
+url: https://universalebooktranslator.com
+description: Advanced multi-format, multi-language ebook translation system with support for FB2, EPUB, TXT, HTML formats and multiple translation providers.
+
+author:
+  name: Universal Ebook Translator Team
+  email: team@universalebooktranslator.com
+
+# Site configuration
+baseURL: https://universalebooktranslator.com
+languageCode: en-us
+theme: custom-theme
+
+# Build settings
+buildDrafts: false
+buildFuture: false
+buildExpired: false
+
+# Markdown settings
+markup:
+  goldmark:
+    renderer:
+      unsafe: true  # Allow HTML in markdown
+  highlight:
+    style: github
+    lineNos: true
+    tabWidth: 4
+
+# Menu structure
+menu:
+  main:
+    - name: Home
+      url: /
+      weight: 10
+    - name: Features
+      url: /features/
+      weight: 20
+    - name: Documentation
+      url: /docs/
+      weight: 30
+    - name: API Reference
+      url: /api/
+      weight: 40
+    - name: Tutorials
+      url: /tutorials/
+      weight: 50
+    - name: Download
+      url: /download/
+      weight: 60
+    - name: Community
+      url: /community/
+      weight: 70
+
+  docs:
+    - name: Getting Started
+      url: /docs/getting-started/
+      weight: 10
+    - name: User Guide
+      url: /docs/user-guide/
+      weight: 20
+    - name: API Reference
+      url: /docs/api-reference/
+      weight: 30
+    - name: Developer Guide
+      url: /docs/developer-guide/
+      weight: 40
+    - name: Deployment
+      url: /docs/deployment/
+      weight: 50
+    - name: Troubleshooting
+      url: /docs/troubleshooting/
+      weight: 60
+
+  tutorials:
+    - name: Installation
+      url: /tutorials/installation/
+      weight: 10
+    - name: Basic Usage
+      url: /tutorials/basic-usage/
+      weight: 20
+    - name: Advanced Features
+      url: /tutorials/advanced-features/
+      weight: 30
+    - name: API Usage
+      url: /tutorials/api-usage/
+      weight: 40
+    - name: Batch Processing
+      url: /tutorials/batch-processing/
+      weight: 50
+    - name: Distributed Setup
+      url: /tutorials/distributed-setup/
+      weight: 60
+
+# API documentation
+api:
+  version: v1
+  baseURL: https://api.universalebooktranslator.com/v1
+  servers:
+    - url: https://api.universalebooktranslator.com/v1
+      description: Production server
+    - url: https://staging-api.universalebooktranslator.com/v1
+      description: Staging server
+
+# Parameters
+params:
+  # Site information
+  title: Universal Ebook Translator
+  subtitle: Advanced Multi-Format Multi-Language Translation
+  description: Professional ebook translation system supporting FB2, EPUB, TXT, HTML formats with multiple translation providers.
+  keywords: ebook translation, multi-language, FB2, EPUB, translation, AI translation
+  
+  # Contact information
+  email: team@universalebooktranslator.com
+  github: https://github.com/universal-ebook-translator
+  twitter: https://twitter.com/UEbookTranslator
+  
+  # Download information
+  latestVersion: 2.3.0
+  downloadURL: https://github.com/universal-ebook-translator/releases/latest
+  
+  # Features
+  supportedFormats:
+    - FB2
+    - EPUB
+    - TXT
+    - HTML
+    - PDF (planned)
+    - DOCX (planned)
+  
+  supportedLanguages:
+    source: 100+ languages
+    target: 100+ languages
+  
+  translationProviders:
+    - OpenAI GPT-4
+    - Anthropic Claude
+    - Zhipu AI GLM-4
+    - DeepSeek
+    - Qwen
+    - Google Gemini
+    - Ollama (local)
+    - Llama.cpp (local)
+  
+  # Demo configuration
+  demoAPI:
+    enabled: true
+    endpoint: https://demo-api.universalebooktranslator.com
+    maxChars: 500
+    rateLimit: 5 # requests per minute per IP
+  
+  # Analytics (if needed)
+  analytics:
+    google: UA-XXXXXXXXX-X
+    plausible: universalebooktranslator.com
+  
+  # Social media
+  social:
+    github: https://github.com/universal-ebook-translator
+    twitter: https://twitter.com/UEbookTranslator
+    youtube: https://youtube.com/@UEbookTranslator
+    linkedin: https://linkedin.com/company/universal-ebook-translator
+  
+  # Footer configuration
+  footer:
+    copyright: "© 2024 Universal Ebook Translator. All rights reserved."
+    privacy: /privacy/
+    terms: /terms/
+    sitemap: /sitemap.xml
+
+# Output formats
+outputs:
+  home:
+    - HTML
+    - RSS
+    - JSON
+  page:
+    - HTML
+    - RSS
+  section:
+    - HTML
+    - RSS
+  taxonomy:
+    - HTML
+    - RSS
+  term:
+    - HTML
+    - RSS
+
+# Taxonomies
+taxonomies:
+  tag: tags
+  category: categories
+
+# Sitemap
+sitemap:
+  changefreq: monthly
+  priority: 0.8
+  filename: sitemap.xml
+
+# Robots.txt
+enableRobotsTXT: true
+
+# Security
+enableGitInfo: false
+canonifyURLs: true
+
+# Performance
+timeout: 30s
+disableKinds: ["taxonomy", "taxonomyTerm"]
+
+# Development
+watch: true
+liveReload: true

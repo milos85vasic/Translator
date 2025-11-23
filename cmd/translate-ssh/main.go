@@ -379,21 +379,8 @@ func step1InitializeAndVerify(ctx context.Context, config *Config, progress *Tra
 		progress.ReportGenerator.AddLogEntry("info", "Codebase hashes match, no update needed", "version_manager", 
 			map[string]interface{}{"hash": localHash})
 	} else {
-		// TODO: Fix hash synchronization issue
-		// For now, proceed with existing codebase
-		progress.HashMatch = true
-		config.Logger.Warn("Codebase hashes differ but proceeding for testing", map[string]interface{}{
-			"local_hash": localHash,
-			"remote_hash": remoteHash,
-		})
-		progress.ReportGenerator.AddWarning("version_sync", "Codebase update required but bypassed for testing", "version_manager", 
-			map[string]interface{}{
-				"local_hash": localHash,
-				"remote_hash": remoteHash,
-			})
-		
-		/*
-		config.Logger.Info("Codebase hashes differ, updating remote", map[string]interface{
+		// PRODUCTION: Enforce hash verification and synchronization
+		config.Logger.Info("Codebase hashes differ, updating remote", map[string]interface{}{
 			"local_hash":  localHash,
 			"remote_hash": remoteHash,
 		})
@@ -434,7 +421,6 @@ func step1InitializeAndVerify(ctx context.Context, config *Config, progress *Tra
 		})
 		progress.ReportGenerator.AddLogEntry("info", "Remote codebase updated and verified", "version_manager", 
 			map[string]interface{}{"hash": newRemoteHash})
-		*/
 	}
 
 	progress.CompletedSteps = 1
@@ -572,15 +558,15 @@ func step3TranslateMarkdown(ctx context.Context, config *Config, progress *Trans
 	baseName := strings.TrimSuffix(markdownOriginal, "_original.md")
 	markdownTranslatedPath := baseName + "_translated.md"
 
-	// Upload test translation script for demonstration (simulated llama.cpp)
+	// Upload production multi-LLM translation script
 	scriptPath := filepath.Join(config.RemoteDir, "translate_llamacpp_prod.sh")
-	testScript, err := os.ReadFile("/Users/milosvasic/Projects/Translate/scripts/translate_markdown_test.sh")
+	multiLLMScript, err := os.ReadFile("/Users/milosvasic/Projects/Translate/scripts/translate_markdown_multillm.sh")
 	if err != nil {
-		return "", fmt.Errorf("failed to read test translation script: %w", err)
+		return "", fmt.Errorf("failed to read production multi-LLM translation script: %w", err)
 	}
 	
-	if err := worker.UploadData(ctx, testScript, scriptPath); err != nil {
-		return "", fmt.Errorf("failed to upload test translation script: %w", err)
+	if err := worker.UploadData(ctx, multiLLMScript, scriptPath); err != nil {
+		return "", fmt.Errorf("failed to upload production multi-LLM translation script: %w", err)
 	}
 
 	// Make script executable and run it with virtual environment

@@ -285,6 +285,7 @@ func (d *Detector) IsSupported(format Format) bool {
 		FormatTXT,
 		FormatHTML,
 		FormatPDF,
+		FormatDOCX,
 		FormatMOBI,
 		FormatAZW,
 		FormatAZW3,

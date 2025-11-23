@@ -68,6 +68,15 @@ func NewUniversalParser() *UniversalParser {
 	return up
 }
 
+// DebugParsers returns a map of registered parsers for debugging
+func (up *UniversalParser) DebugParsers() map[string]string {
+	result := make(map[string]string)
+	for format, parser := range up.parsers {
+		result[string(format)] = fmt.Sprintf("%T", parser)
+	}
+	return result
+}
+
 // Parse parses any supported ebook format
 func (up *UniversalParser) Parse(filename string) (*Book, error) {
 	// Detect format

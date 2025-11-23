@@ -43,8 +43,8 @@ func main() {
 		preferDistributed bool
 	)
 
-	flag.StringVar(&inputFile, "input", "", "Input ebook file (any format: FB2, EPUB, TXT, HTML)")
-	flag.StringVar(&inputFile, "i", "", "Input ebook file (shorthand)")
+	flag.StringVar(&inputFile, "input", "", "Input ebook file (any format: FB2, EPUB, TXT, HTML, PDF, DOCX)")
+	flag.StringVar(&inputFile, "i", "", "Input ebook file (any format: FB2, EPUB, TXT, HTML, PDF, DOCX)")
 	flag.StringVar(&outputFile, "output", "", "Output file")
 	flag.StringVar(&outputFile, "o", "", "Output file (shorthand)")
 	flag.StringVar(&outputFormat, "format", "epub", "Output format (epub, fb2, txt)")
@@ -461,7 +461,7 @@ Usage:
   translator [options] -input <file>
 
 Options:
-  -i, -input <file>       Input ebook file (any format: FB2, EPUB, TXT, HTML)
+  -i, -input <file>       Input ebook file (any format: FB2, EPUB, TXT, HTML, PDF, DOCX)
   -o, -output <file>      Output file (auto-generated if not specified)
   -f, -format <format>    Output format (epub, fb2, txt) [default: epub]
 
@@ -488,7 +488,7 @@ Options:
    -h, -help               Show this help
 
 Supported Input Formats:
-  FB2, EPUB, TXT, HTML
+  FB2, EPUB, TXT, HTML, PDF, DOCX
 
 Supported Output Formats:
   EPUB (default), TXT

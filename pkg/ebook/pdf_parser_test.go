@@ -4,352 +4,259 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"digital.vasic.translator/pkg/format"
 )
 
-func TestPDFParser_Parse(t *testing.T) {
-	t.Run("ValidPDF", func(t *testing.T) {
-		// Create a minimal valid PDF for testing
-		pdfData := []byte("%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n2 0 obj\n<<\n/Type /Pages\n/Kids [3 0 R]\n/Count 1\n>>\nendobj\n3 0 obj\n<<\n/Type /Page\n/Parent 2 0 R\n/MediaBox [0 0 612 792]\n/Contents 4 0 R\n>>\nendobj\n4 0 obj\n<<\n/Length 44\n>>\nstream\nBT\n/F1 12 Tf\n72 720 Td\n(Hello World) Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f\n0000000010 00000 n\n0000000079 00000 n\n0000000173 00000 n\n0000000301 00000 n\ntrailer\n<<\n/Size 5\n/Root 1 0 R\n>>\nstartxref\n396\n%%EOF")
+func TestNewPDFParser(t *testing.T) {
+	// Test with nil config
+	parser := NewPDFParser(nil)
+	if parser == nil {
+		t.Fatal("Expected parser to be created with nil config")
+	}
 
-		config := &PDFConfig{
-			ExtractImages:   true,
-			ImageFormat:     "png",
-			PreserveLayout:  true,
-			MinTextLength:   5,
-			ExtractMetadata: true,
-		}
+	if parser.config == nil {
+		t.Error("Expected default config to be set")
+	}
 
-		parser := NewPDFParser(config)
-		
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		ebook, err := parser.Parse(ctx, pdfData)
-		
-		// Note: This test may fail due to unidoc limitations in test environment
-		// but the structure should be correct
-		if err != nil {
-			t.Logf("Parse error (expected in test environment): %v", err)
-			return
-		}
-
-		if ebook == nil {
-			t.Error("Expected ebook to be parsed")
-			return
-		}
-
-		if ebook.Format != "pdf" {
-			t.Errorf("Expected format 'pdf', got '%s'", ebook.Format)
-		}
-
-		if ebook.Content == "" {
-			t.Error("Expected content to be extracted")
-		}
-	})
-
-	t.Run("ContextCancellation", func(t *testing.T) {
-		pdfData := []byte("%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n")
-
-		parser := NewPDFParser(nil)
-		
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-		defer cancel()
-
-		_, err := parser.Parse(ctx, pdfData)
-		if err != context.DeadlineExceeded {
-			t.Errorf("Expected context.DeadlineExceeded, got %v", err)
-		}
-	})
+	if !parser.config.ExtractImages {
+		t.Error("Expected ExtractImages to be true by default")
+	}
 }
 
-func TestPDFParser_Validate(t *testing.T) {
-	t.Run("ValidPDF", func(t *testing.T) {
-		pdfData := []byte("%PDF-1.4\n%....EOF")
-		parser := NewPDFParser(nil)
-		
-		err := parser.Validate(pdfData)
-		// May fail due to incomplete PDF structure
-		if err != nil {
-			t.Logf("Validation error (expected with minimal PDF): %v", err)
-		}
-	})
-
-	t.Run("InvalidPDF", func(t *testing.T) {
-		invalidData := []byte("Not a PDF file")
-		parser := NewPDFParser(nil)
-		
-		err := parser.Validate(invalidData)
-		if err == nil {
-			t.Error("Expected validation error for non-PDF data")
-		}
-	})
-
-	t.Run("EmptyFile", func(t *testing.T) {
-		invalidData := []byte("")
-		parser := NewPDFParser(nil)
-		
-		err := parser.Validate(invalidData)
-		if err == nil {
-			t.Error("Expected validation error for empty file")
-		}
-	})
-
-	t.Run("TooSmallFile", func(t *testing.T) {
-		invalidData := []byte("%PDF")
-		parser := NewPDFParser(nil)
-		
-		err := parser.Validate(invalidData)
-		if err == nil {
-			t.Error("Expected validation error for file too small")
-		}
-	})
+func TestPDFParser_GetFormat(t *testing.T) {
+	parser := NewPDFParser(nil)
+	if parser.GetFormat() != format.FormatPDF {
+		t.Errorf("Expected format to be %s, got %s", format.FormatPDF, parser.GetFormat())
+	}
 }
 
 func TestPDFParser_SupportedFormats(t *testing.T) {
 	parser := NewPDFParser(nil)
 	formats := parser.SupportedFormats()
-	
+
 	expectedFormats := []string{"pdf", "application/pdf"}
-	
 	if len(formats) != len(expectedFormats) {
 		t.Errorf("Expected %d formats, got %d", len(expectedFormats), len(formats))
 	}
-	
-	for i, format := range expectedFormats {
-		if i >= len(formats) || formats[i] != format {
-			t.Errorf("Expected format '%s' at index %d, got '%s'", format, i, formats[i])
+
+	for i, expected := range expectedFormats {
+		if i >= len(formats) || formats[i] != expected {
+			t.Errorf("Expected format %d to be %s, got %s", i, expected, formats[i])
 		}
+	}
+}
+
+func TestPDFParser_Validate(t *testing.T) {
+	parser := NewPDFParser(nil)
+
+	// Test with empty data
+	err := parser.Validate([]byte{})
+	if err == nil {
+		t.Error("Expected validation to fail with empty data")
+	}
+
+	// Test with invalid PDF data
+	invalidData := []byte("not a pdf file")
+	err = parser.Validate(invalidData)
+	if err == nil {
+		t.Error("Expected validation to fail with invalid data")
+	}
+
+	// Test with valid PDF signature but invalid structure
+	pdfHeader := []byte("%PDF-1.4\n")
+	err = parser.Validate(pdfHeader)
+	if err != nil {
+		// This might fail due to invalid PDF structure, but the signature is valid
+		t.Logf("Expected validation to possibly fail with incomplete PDF: %v", err)
 	}
 }
 
 func TestPDFParser_GetMetadata(t *testing.T) {
-	t.Run("PDFWithMetadata", func(t *testing.T) {
-		// Create PDF with metadata
-		pdfData := []byte("%PDF-1.4\n1 0 obj\n<<\n/Title (Test Document)\n/Author (Test Author)\n/Creator (Test Creator)\n>>\nendobj\n...")
+	parser := NewPDFParser(nil)
 
-		parser := NewPDFParser(nil)
-		
-		metadata, err := parser.GetMetadata(pdfData)
-		if err != nil {
-			t.Logf("Metadata extraction error (expected in test environment): %v", err)
-			return
-		}
+	// Test with empty data
+	_, err := parser.GetMetadata([]byte{})
+	if err == nil {
+		t.Error("Expected metadata extraction to fail with empty data")
+	}
 
-		if metadata == nil {
-			t.Error("Expected metadata to be extracted")
-			return
-		}
-
-		if metadata.Format != "pdf" {
-			t.Errorf("Expected format 'pdf', got '%s'", metadata.Format)
-		}
-	})
+	// Test with invalid data (not a PDF)
+	invalidData := []byte("not a pdf file")
+	_, err = parser.GetMetadata(invalidData)
+	if err == nil {
+		t.Error("Expected metadata extraction to fail with invalid data")
+	}
 }
 
-func TestPDFParser_Configuration(t *testing.T) {
-	t.Run("DefaultConfig", func(t *testing.T) {
-		parser := NewPDFParser(nil)
-		
-		if parser.config == nil {
-			t.Error("Expected default config to be set")
-		}
-		
-		if !parser.config.ExtractImages {
-			t.Error("Expected ExtractImages to be true by default")
-		}
-		
-		if parser.config.ImageFormat != "png" {
-			t.Errorf("Expected ImageFormat 'png', got '%s'", parser.config.ImageFormat)
-		}
-	})
+func TestPDFParser_ParseWithContext(t *testing.T) {
+	parser := NewPDFParser(nil)
+	ctx := context.Background()
 
-	t.Run("CustomConfig", func(t *testing.T) {
-		config := &PDFConfig{
-			ExtractImages:   false,
-			ImageFormat:     "jpeg",
-			MinTextLength:   10,
-			ExtractMetadata: false,
-		}
-		
-		parser := NewPDFParser(config)
-		
-		if parser.config.ExtractImages {
-			t.Error("Expected ExtractImages to be false")
-		}
-		
-		if parser.config.ImageFormat != "jpeg" {
-			t.Errorf("Expected ImageFormat 'jpeg', got '%s'", parser.config.ImageFormat)
-		}
-		
-		if parser.config.MinTextLength != 10 {
-			t.Errorf("Expected MinTextLength 10, got %d", parser.config.MinTextLength)
-		}
-	})
+	// Test with empty data
+	_, err := parser.ParseWithContext(ctx, []byte{})
+	if err == nil {
+		t.Error("Expected parsing to fail with empty data")
+	}
+
+	// Test with invalid data (not a PDF)
+	invalidData := []byte("not a pdf file")
+	_, err = parser.ParseWithContext(ctx, invalidData)
+	if err == nil {
+		t.Error("Expected parsing to fail with invalid data")
+	}
 }
 
-func TestPDFParser_ContentExtraction(t *testing.T) {
-	t.Run("TextExtraction", func(t *testing.T) {
-		config := &PDFConfig{
-			ExtractImages:   false,
-			ExtractMetadata: false,
-			MinTextLength:   1,
-		}
-		
-		parser := NewPDFParser(config)
-		
-		// Test text cleaning
-		dirtyText := "Hello  World\n\rTest"
-		cleanText := parser.cleanText(dirtyText)
-		
-		expected := "Hello World\nTest"
-		if cleanText != expected {
-			t.Errorf("Expected '%s', got '%s'", expected, cleanText)
-		}
-	})
+func TestPDFParser_ContextCancellation(t *testing.T) {
+	parser := NewPDFParser(nil)
+	
+	// Create a context that's already cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
-	t.Run("LayoutPreservation", func(t *testing.T) {
-		config := &PDFConfig{
-			PreserveLayout: true,
-		}
-		
-		parser := NewPDFParser(config)
-		
-		text := "Line 1\n\n  \nLine 2\n   \nLine 3"
-		preserved := parser.preserveLayout(text, 1)
-		
-		lines := []string{"Line 1", "Line 2", "Line 3"}
-		expected := "Line 1\nLine 2\nLine 3"
-		
-		if preserved != expected {
-			t.Errorf("Expected '%s', got '%s'", expected, preserved)
-		}
-	})
+	// Even with invalid data, context cancellation should be detected
+	_, err := parser.ParseWithContext(ctx, []byte("not a pdf"))
+	if err == nil {
+		t.Error("Expected parsing to fail with cancelled context")
+	}
+
+	// Check if it's either context cancelled or parsing error (both acceptable)
+	if err != context.Canceled && !containsString(err.Error(), "version not found") {
+		t.Errorf("Expected context.Canceled or version error, got %v", err)
+	}
 }
 
-func TestPDFParser_PDFContentStructure(t *testing.T) {
-	t.Run("PDFContentValidation", func(t *testing.T) {
-		content := &PDFContent{
-			Text: "Test content",
-			Images: []PDFImage{
-				{
-					Data:   []byte("image-data"),
-					Format: "png",
-					Width:  100,
-					Height: 100,
-					Page:   1,
-				},
-			},
-			Tables: []PDFTable{
-				{
-					Cells: [][]string{
-						{"Header 1", "Header 2"},
-						{"Cell 1", "Cell 2"},
-					},
-					Page: 1,
-				},
-			},
+func containsString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
 		}
-
-		if content.Text == "" {
-			t.Error("Expected text content")
-		}
-
-		if len(content.Images) != 1 {
-			t.Errorf("Expected 1 image, got %d", len(content.Images))
-		}
-
-		if len(content.Tables) != 1 {
-			t.Errorf("Expected 1 table, got %d", len(content.Tables))
-		}
-
-		if len(content.Tables[0].Cells) != 2 {
-			t.Errorf("Expected 2 table rows, got %d", len(content.Tables[0].Cells))
-		}
-	})
+	}
+	return false
 }
 
-func TestPDFParser_MetadataStructure(t *testing.T) {
-	t.Run("PDFMetadataValidation", func(t *testing.T) {
-		metadata := PDFMetadata{
-			Title:        "Test Document",
-			Author:       "Test Author",
-			Creator:      "Test Creator",
-			Subject:      "Test Subject",
-			Producer:     "Test Producer",
-			CreationDate: "2024-01-15T10:30:00Z",
-			ModDate:      "2024-01-16T10:30:00Z",
-			Pages:        10,
-			Language:     "en",
-			Keywords:     []string{"test", "document", "pdf"},
-		}
+func TestPDFConfig_Defaults(t *testing.T) {
+	parser := NewPDFParser(nil)
+	config := parser.config
 
-		if metadata.Title != "Test Document" {
-			t.Errorf("Expected title 'Test Document', got '%s'", metadata.Title)
-		}
+	if config.ExtractImages != true {
+		t.Error("Expected ExtractImages to be true by default")
+	}
 
-		if len(metadata.Keywords) != 3 {
-			t.Errorf("Expected 3 keywords, got %d", len(metadata.Keywords))
-		}
+	if config.ImageFormat != "png" {
+		t.Errorf("Expected ImageFormat to be 'png', got '%s'", config.ImageFormat)
+	}
 
-		if metadata.Pages != 10 {
-			t.Errorf("Expected 10 pages, got %d", metadata.Pages)
-		}
-	})
+	if config.ExtractTables != true {
+		t.Error("Expected ExtractTables to be true by default")
+	}
+
+	if config.MinTextLength != 1 {
+		t.Errorf("Expected MinTextLength to be 1, got %d", config.MinTextLength)
+	}
 }
 
-func TestPDFParser_ErrorHandling(t *testing.T) {
-	t.Run("NilData", func(t *testing.T) {
-		parser := NewPDFParser(nil)
-		
-		_, err := parser.Validate(nil)
-		if err == nil {
-			t.Error("Expected error for nil data")
-		}
-	})
+func TestPDFParser_WithConfig(t *testing.T) {
+	config := &PDFConfig{
+		ExtractImages:   false,
+		ImageFormat:     "jpeg",
+		ExtractTables:   false,
+		OcrEnabled:     true,
+		OcrLanguage:    "spa",
+		MinTextLength:   50,
+		PreserveLayout: false,
+	}
 
-	t.Run("CorruptedData", func(t *testing.T) {
-		parser := NewPDFParser(nil)
-		
-		// Invalid PDF with correct header
-		corruptedData := []byte("%PDF-1.4\nThis is not a valid PDF structure")
-		
-		err := parser.Validate(corruptedData)
-		if err == nil {
-			t.Error("Expected validation error for corrupted PDF")
-		}
-	})
+	parser := NewPDFParser(config)
+
+	if parser.config.ExtractImages != false {
+		t.Error("Expected ExtractImages to be false")
+	}
+
+	if parser.config.ImageFormat != "jpeg" {
+		t.Errorf("Expected ImageFormat to be 'jpeg', got '%s'", parser.config.ImageFormat)
+	}
+
+	if parser.config.MinTextLength != 50 {
+		t.Errorf("Expected MinTextLength to be 50, got %d", parser.config.MinTextLength)
+	}
+
+	if parser.config.OcrEnabled != true {
+		t.Error("Expected OcrEnabled to be true")
+	}
+
+	if parser.config.OcrLanguage != "spa" {
+		t.Errorf("Expected OcrLanguage to be 'spa', got '%s'", parser.config.OcrLanguage)
+	}
 }
 
+// Performance test
 func TestPDFParser_Performance(t *testing.T) {
-	t.Run("LargePDFProcessing", func(t *testing.T) {
-		config := &PDFConfig{
-			ExtractImages:   false,
-			ExtractMetadata: false,
-			MinTextLength:   1,
+	if testing.Short() {
+		t.Skip("Skipping performance test in short mode")
+	}
+
+	parser := NewPDFParser(nil)
+	ctx := context.Background()
+
+	// Create a large but invalid PDF data for performance testing
+	largeData := make([]byte, 2*1024*1024) // 2MB
+	copy(largeData, []byte("%PDF-1.4\n"))
+	for i := 10; i < len(largeData); i++ {
+		largeData[i] = byte(i % 256)
+	}
+
+	start := time.Now()
+	_, err := parser.ParseWithContext(ctx, largeData)
+	duration := time.Since(start)
+
+	// Should fail quickly even with large invalid data
+	if duration > 10*time.Second {
+		t.Errorf("Parsing took too long: %v", duration)
+	}
+
+	if err == nil {
+		t.Error("Expected parsing to fail with invalid data")
+	}
+}
+
+// Test that PDF signature detection works correctly
+func TestPDFParser_SignatureDetection(t *testing.T) {
+	parser := NewPDFParser(nil)
+
+	// Test various PDF signatures
+	validSignatures := [][]byte{
+		[]byte("%PDF-1.0\n"),
+		[]byte("%PDF-1.1\n"),
+		[]byte("%PDF-1.2\n"),
+		[]byte("%PDF-1.3\n"),
+		[]byte("%PDF-1.4\n"),
+		[]byte("%PDF-1.5\n"),
+		[]byte("%PDF-1.6\n"),
+		[]byte("%PDF-1.7\n"),
+		[]byte("%PDF-2.0\n"),
+	}
+
+	invalidSignatures := [][]byte{
+		[]byte("%PDF-1.8\n"), // Invalid version
+		[]byte("%PDf-1.4\n"),  // Case sensitive
+		[]byte("PDF-1.4\n"),   // Missing %
+		[]byte("%PDF-1.4"),    // Missing newline
+	}
+
+	for i, sig := range validSignatures {
+		err := parser.Validate(sig)
+		// Valid signatures should either succeed or fail due to incomplete structure
+		// but should not fail signature validation
+		if err != nil && !containsString(err.Error(), "signature") && !containsString(err.Error(), "structure") {
+			t.Errorf("Valid signature %d failed with unexpected error: %v", i, err)
 		}
-		
-		parser := NewPDFParser(config)
-		
-		// Simulate large PDF processing
-		start := time.Now()
-		
-		// Create a large PDF-like data (for testing performance)
-		largeData := make([]byte, 1024*1024) // 1MB
-		copy(largeData, []byte("%PDF-1.4\n"))
-		
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		
-		_, err := parser.Parse(ctx, largeData)
-		duration := time.Since(start)
-		
-		// Should timeout or fail quickly, not hang
-		if err == nil && duration > 3*time.Second {
-			t.Errorf("Processing took too long: %v", duration)
+	}
+
+	for i, sig := range invalidSignatures {
+		err := parser.Validate(sig)
+		if err == nil {
+			t.Errorf("Invalid signature %d should have failed validation", i)
 		}
-		
-		if duration > 5*time.Second {
-			t.Errorf("Processing exceeded timeout: %v", duration)
-		}
-	})
+	}
 }

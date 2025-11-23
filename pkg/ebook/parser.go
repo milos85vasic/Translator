@@ -62,6 +62,8 @@ func NewUniversalParser() *UniversalParser {
 	up.parsers[format.FormatEPUB] = NewEPUBParser()
 	up.parsers[format.FormatTXT] = NewTXTParser()
 	up.parsers[format.FormatHTML] = NewHTMLParser()
+	up.parsers[format.FormatPDF] = NewPDFParser(nil)
+	up.parsers[format.FormatDOCX] = NewDOCXParser(nil)
 
 	return up
 }

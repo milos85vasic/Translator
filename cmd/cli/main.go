@@ -11,6 +11,7 @@ import (
 	"digital.vasic.translator/pkg/script"
 	"digital.vasic.translator/pkg/translator"
 	"digital.vasic.translator/pkg/translator/llm"
+	versionpkg "digital.vasic.translator/pkg/version"
 	"flag"
 	"fmt"
 	"os"
@@ -41,6 +42,7 @@ func main() {
 		detectLang        bool
 		disableLocalLLMs  bool
 		preferDistributed bool
+		hashCodebase      bool
 	)
 
 	flag.StringVar(&inputFile, "input", "", "Input ebook file (any format: FB2, EPUB, TXT, HTML, PDF, DOCX)")
@@ -68,6 +70,7 @@ func main() {
 	flag.BoolVar(&preferDistributed, "prefer-distributed", false, "Prefer distributed workers over local LLMs when available")
 	flag.StringVar(&configFile, "config", "", "Configuration file path")
 	flag.StringVar(&configFile, "c", "", "Configuration file path (shorthand)")
+	flag.BoolVar(&hashCodebase, "hash-codebase", false, "Calculate codebase hash and exit")
 
 	flag.Parse()
 
@@ -78,8 +81,20 @@ func main() {
 	}
 
 	// Handle help
-	if showHelp || (inputFile == "" && createConfig == "") {
+	if showHelp || (inputFile == "" && createConfig == "" && !hashCodebase) {
 		printHelp()
+		os.Exit(0)
+	}
+
+	// Handle hash-codebase calculation
+	if hashCodebase {
+		hasher := versionpkg.NewCodebaseHasher()
+		hash, err := hasher.CalculateHash()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error calculating codebase hash: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(hash)
 		os.Exit(0)
 	}
 

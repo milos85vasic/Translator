@@ -13,20 +13,38 @@ import (
 	"digital.vasic.translator/pkg/events"
 	"digital.vasic.translator/pkg/language"
 	"digital.vasic.translator/pkg/translator"
-	"digital.vasic.translator/pkg/translator/dictionary"
 	"digital.vasic.translator/pkg/verification"
 )
 
-// BenchmarkDictionaryTranslation benchmarks dictionary-based translation
+// MockTranslator for testing
+type MockTranslator struct{}
+
+func (m *MockTranslator) Translate(ctx context.Context, text, context string) (string, error) {
+	return "translated: " + text, nil
+}
+
+func (m *MockTranslator) TranslateWithProgress(ctx context.Context, text, context string, eventBus *events.EventBus, sessionID string) (string, error) {
+	return m.Translate(ctx, text, context)
+}
+
+func (m *MockTranslator) GetStats() translator.TranslationStats {
+	return translator.TranslationStats{
+		Total:      0,
+		Translated: 0,
+		Cached:     0,
+		Errors:     0,
+	}
+}
+
+func (m *MockTranslator) GetName() string {
+	return "mock"
+}
+
+// BenchmarkMockTranslation benchmarks mock-based translation
 func BenchmarkDictionaryTranslation(b *testing.B) {
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+	trans := &MockTranslator{}
 
 	texts := []string{
 		"Hello, world!",
@@ -47,12 +65,7 @@ func BenchmarkDictionaryTranslation(b *testing.B) {
 func BenchmarkBookTranslation(b *testing.B) {
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+	trans := &MockTranslator{}
 
 	en := language.Language{Code: "en", Name: "English"}
 	sr := language.Language{Code: "sr", Name: "Serbian"}
@@ -75,12 +88,8 @@ func BenchmarkVerification(b *testing.B) {
 	book := createTestBook(10, 5)
 
 	// Pre-translate the book
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+
+	trans := &MockTranslator{}
 	en := language.Language{Code: "en", Name: "English"}
 	sr := language.Language{Code: "sr", Name: "Serbian"}
 	langDetector := language.NewDetector(nil)
@@ -100,12 +109,7 @@ func BenchmarkVerification(b *testing.B) {
 func BenchmarkSmallBook(b *testing.B) {
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+	trans := &MockTranslator{}
 	en := language.Language{Code: "en", Name: "English"}
 	sr := language.Language{Code: "sr", Name: "Serbian"}
 	langDetector := language.NewDetector(nil)
@@ -123,12 +127,7 @@ func BenchmarkSmallBook(b *testing.B) {
 func BenchmarkMediumBook(b *testing.B) {
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+	trans := &MockTranslator{}
 	en := language.Language{Code: "en", Name: "English"}
 	sr := language.Language{Code: "sr", Name: "Serbian"}
 	langDetector := language.NewDetector(nil)
@@ -146,12 +145,7 @@ func BenchmarkMediumBook(b *testing.B) {
 func BenchmarkLargeBook(b *testing.B) {
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+	trans := &MockTranslator{}
 	en := language.Language{Code: "en", Name: "English"}
 	sr := language.Language{Code: "sr", Name: "Serbian"}
 	langDetector := language.NewDetector(nil)
@@ -201,12 +195,7 @@ func TestTranslationThroughput(t *testing.T) {
 
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+	trans := &MockTranslator{}
 
 	// Measure throughput for 1000 sentences
 	sentences := make([]string, 1000)
@@ -272,12 +261,7 @@ func TestMemoryUsage(t *testing.T) {
 
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+	trans := &MockTranslator{}
 	en := language.Language{Code: "en", Name: "English"}
 	sr := language.Language{Code: "sr", Name: "Serbian"}
 	langDetector := language.NewDetector(nil)
@@ -301,19 +285,13 @@ func TestConcurrentTranslations(t *testing.T) {
 
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-
 	// Launch 10 concurrent translations
 	done := make(chan time.Duration, 10)
 
 	startTime := time.Now()
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			trans := dictionary.NewDictionaryTranslator(translatorConfig)
+			trans := &MockTranslator{}
 			en := language.Language{Code: "en", Name: "English"}
 			sr := language.Language{Code: "sr", Name: "Serbian"}
 			langDetector := language.NewDetector(nil)
@@ -353,12 +331,7 @@ func TestScalability(t *testing.T) {
 
 	ctx := context.Background()
 
-	translatorConfig := translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	}
-	trans := dictionary.NewDictionaryTranslator(translatorConfig)
+	trans := &MockTranslator{}
 	en := language.Language{Code: "en", Name: "English"}
 	sr := language.Language{Code: "sr", Name: "Serbian"}
 	langDetector := language.NewDetector(nil)

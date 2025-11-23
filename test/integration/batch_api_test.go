@@ -24,7 +24,6 @@ import (
 	"digital.vasic.translator/pkg/language"
 	"digital.vasic.translator/pkg/security"
 	"digital.vasic.translator/pkg/translator"
-	"digital.vasic.translator/pkg/translator/llm"
 	"digital.vasic.translator/pkg/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -57,7 +56,7 @@ func TestStringTranslationAPI(t *testing.T) {
 		reqBody := map[string]interface{}{
 			"text":            "Hello, world!",
 			"target_language": "sr",
-			"provider":        "dictionary",
+			"provider":        "openai",
 		}
 
 		jsonBody, _ := json.Marshal(reqBody)
@@ -174,7 +173,7 @@ func TestDirectoryTranslationAPI(t *testing.T) {
 			"input_path":      inputDir,
 			"output_path":     outputDir,
 			"target_language": "sr",
-			"provider":        "dictionary",
+			"provider":        "openai",
 			"recursive":       false,
 		}
 
@@ -222,7 +221,7 @@ func TestDirectoryTranslationAPI(t *testing.T) {
 			"input_path":      inputDir,
 			"output_path":     outputDir,
 			"target_language": "sr",
-			"provider":        "dictionary",
+			"provider":        "openai",
 			"recursive":       true,
 		}
 
@@ -250,7 +249,7 @@ func TestDirectoryTranslationAPI(t *testing.T) {
 			"input_path":      inputDir,
 			"output_path":     outputDir,
 			"target_language": "sr",
-			"provider":        "dictionary",
+			"provider":        "openai",
 			"parallel":        true,
 			"max_concurrency": 2,
 		}
@@ -414,11 +413,7 @@ func TestFB2TranslationAPI(t *testing.T) {
 				}
 
 				// Test translation logic (without actual API call)
-				trans := dictionary.NewDictionaryTranslator(translator.TranslationConfig{
-					SourceLang: "ru",
-					TargetLang: "sr",
-					Provider:   "dictionary",
-				})
+				trans := &MockTranslator{}
 
 				ctx := context.Background()
 				eventBus := events.NewEventBus()

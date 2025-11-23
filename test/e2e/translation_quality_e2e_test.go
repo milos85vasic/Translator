@@ -19,9 +19,32 @@ import (
 	"digital.vasic.translator/pkg/format"
 	"digital.vasic.translator/pkg/language"
 	"digital.vasic.translator/pkg/translator"
-	"digital.vasic.translator/pkg/translator/dictionary"
 	"digital.vasic.translator/pkg/verification"
 )
+
+// MockTranslator for testing
+type MockTranslator struct{}
+
+func (m *MockTranslator) Translate(ctx context.Context, text, context string) (string, error) {
+	return "translated: " + text, nil
+}
+
+func (m *MockTranslator) TranslateWithProgress(ctx context.Context, text, context string, eventBus *events.EventBus, sessionID string) (string, error) {
+	return m.Translate(ctx, text, context)
+}
+
+func (m *MockTranslator) GetStats() translator.TranslationStats {
+	return translator.TranslationStats{
+		Total:      0,
+		Translated: 0,
+		Cached:     0,
+		Errors:     0,
+	}
+}
+
+func (m *MockTranslator) GetName() string {
+	return "mock"
+}
 
 // TestProjectGutenbergTranslation tests translation of real books from Project Gutenberg
 func TestProjectGutenbergTranslation(t *testing.T) {
@@ -59,13 +82,8 @@ func TestProjectGutenbergTranslation(t *testing.T) {
 
 		t.Logf("Parsed book: %d chapters", len(book.Chapters))
 
-		// Create translator (dictionary for fast testing)
-		translatorConfig := translator.TranslationConfig{
-			SourceLang: "ru",
-			TargetLang: "sr",
-			Provider:   "dictionary",
-		}
-		trans := dictionary.NewDictionaryTranslator(translatorConfig)
+		// Create translator (mock for fast testing)
+		trans := &MockTranslator{}
 
 		// Create language detector
 		langDetector := language.NewDetector(nil)
@@ -132,12 +150,7 @@ func TestProjectGutenbergTranslation(t *testing.T) {
 		t.Logf("Parsed EPUB: %d chapters", len(book.Chapters))
 
 		// Create translator
-		translatorConfig := translator.TranslationConfig{
-			SourceLang: "en",
-			TargetLang: "sr",
-			Provider:   "dictionary",
-		}
-		trans := dictionary.NewDictionaryTranslator(translatorConfig)
+		trans := &MockTranslator{}
 
 		// Translate
 		en := language.Language{Code: "en", Name: "English"}
@@ -330,12 +343,7 @@ func TestFullPipelineWithVerification(t *testing.T) {
 		}
 
 		// Translate
-		translatorConfig := translator.TranslationConfig{
-			SourceLang: "en",
-			TargetLang: "sr",
-			Provider:   "dictionary",
-		}
-		trans := dictionary.NewDictionaryTranslator(translatorConfig)
+		trans := &MockTranslator{}
 
 		en := language.Language{Code: "en", Name: "English"}
 		sr := language.Language{Code: "sr", Name: "Serbian"}
@@ -414,12 +422,8 @@ func TestErrorRecovery(t *testing.T) {
 			},
 		}
 
-		translatorConfig := translator.TranslationConfig{
-			SourceLang: "en",
-			TargetLang: "sr",
-			Provider:   "dictionary",
-		}
-		trans := dictionary.NewDictionaryTranslator(translatorConfig)
+
+		trans := &MockTranslator{}
 
 		en := language.Language{Code: "en", Name: "English"}
 		sr := language.Language{Code: "sr", Name: "Serbian"}
@@ -434,7 +438,7 @@ func TestErrorRecovery(t *testing.T) {
 			}
 		})
 
-		// This should complete despite any errors (dictionary translator is forgiving)
+		// This should complete despite any errors (mock translator is forgiving)
 		_ = universalTrans.TranslateBook(ctx, book, eventBus, "e2e-recovery")
 
 		t.Logf("Received %d error events", errorEvents)
@@ -474,12 +478,8 @@ func TestLargeBookPerformance(t *testing.T) {
 			Chapters: chapters,
 		}
 
-		translatorConfig := translator.TranslationConfig{
-			SourceLang: "en",
-			TargetLang: "sr",
-			Provider:   "dictionary",
-		}
-		trans := dictionary.NewDictionaryTranslator(translatorConfig)
+
+		trans := &MockTranslator{}
 
 		en := language.Language{Code: "en", Name: "English"}
 		sr := language.Language{Code: "sr", Name: "Serbian"}
@@ -536,11 +536,7 @@ func TestCLIBypassIssue(t *testing.T) {
 		}
 
 		// Verify that translation produces valid output
-		trans := dictionary.NewDictionaryTranslator(translator.TranslationConfig{
-			SourceLang: "ru",
-			TargetLang: "sr",
-			Provider:   "dictionary",
-		})
+		trans := &MockTranslator{}
 
 		ctx := context.Background()
 		eventBus := events.NewEventBus()

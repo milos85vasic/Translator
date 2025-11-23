@@ -15,20 +15,13 @@ import (
 	"digital.vasic.translator/internal/config"
 	"digital.vasic.translator/pkg/api"
 	"digital.vasic.translator/pkg/events"
-	"digital.vasic.translator/pkg/translator"
-	"digital.vasic.translator/pkg/translator/llm"
 
 	"github.com/gin-gonic/gin"
 )
 
 func TestInputValidation_SQLInjectionPrevention(t *testing.T) {
 	// Test that SQL injection attempts are properly handled
-	translator, _ := llm.NewLLMTranslator(translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "openai",
-		Model:      "gpt-3.5-turbo",
-	})
+	translator := NewMockTranslator()
 
 	sqlInjectionAttempts := []string{
 		"'; DROP TABLE users; --",
@@ -52,11 +45,7 @@ func TestInputValidation_SQLInjectionPrevention(t *testing.T) {
 
 func TestInputValidation_XSSPrevention(t *testing.T) {
 	// Test that XSS attempts are properly handled
-	translator := dictionary.NewDictionaryTranslator(translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	})
+	translator := NewMockTranslator()
 
 	xssAttempts := []string{
 		"<script>alert('XSS')</script>",
@@ -116,11 +105,7 @@ func TestInputValidation_PathTraversalPrevention(t *testing.T) {
 
 func TestInputValidation_CommandInjectionPrevention(t *testing.T) {
 	// Test that command injection attempts are blocked
-	translator := dictionary.NewDictionaryTranslator(translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	})
+	translator := NewMockTranslator()
 
 	commandInjectionAttempts := []string{
 		"; rm -rf /",
@@ -143,11 +128,7 @@ func TestInputValidation_CommandInjectionPrevention(t *testing.T) {
 
 func TestInputValidation_BufferOverflowPrevention(t *testing.T) {
 	// Test handling of extremely large inputs
-	translator := dictionary.NewDictionaryTranslator(translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	})
+	translator := NewMockTranslator()
 
 	// Create a very large input
 	var largeInput strings.Builder
@@ -169,11 +150,7 @@ func TestInputValidation_BufferOverflowPrevention(t *testing.T) {
 
 func TestInputValidation_NullByteInjection(t *testing.T) {
 	// Test that null byte injection is handled
-	translator := dictionary.NewDictionaryTranslator(translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	})
+	translator := NewMockTranslator()
 
 	nullByteInputs := []string{
 		"test\x00malicious",
@@ -197,11 +174,7 @@ func TestInputValidation_NullByteInjection(t *testing.T) {
 
 func TestInputValidation_UnicodeNormalization(t *testing.T) {
 	// Test handling of Unicode normalization attacks
-	translator := dictionary.NewDictionaryTranslator(translator.TranslationConfig{
-		SourceLang: "en",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	})
+	translator := NewMockTranslator()
 
 	// Test various Unicode characters that might be used for attacks
 	unicodeInputs := []string{

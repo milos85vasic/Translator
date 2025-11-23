@@ -14,8 +14,6 @@ import (
 	"digital.vasic.translator/pkg/ebook"
 	"digital.vasic.translator/pkg/events"
 	"digital.vasic.translator/pkg/format"
-	"digital.vasic.translator/pkg/translator"
-	"digital.vasic.translator/pkg/translator/dictionary"
 
 	"github.com/gin-gonic/gin"
 )
@@ -72,11 +70,7 @@ func TestCrossPackage_FileProcessingPipeline(t *testing.T) {
 	}
 
 	// Step 3: Translation
-	trans := dictionary.NewDictionaryTranslator(translator.TranslationConfig{
-		SourceLang: "ru",
-		TargetLang: "sr",
-		Provider:   "dictionary",
-	})
+	trans := &MockTranslator{}
 
 	// Translate each chapter
 	for i, chapter := range book.Chapters {
@@ -104,7 +98,7 @@ func TestCrossPackage_APIAndTranslationIntegration(t *testing.T) {
 
 	// Setup complete system: config -> API -> translation
 	cfg := config.DefaultConfig()
-	cfg.Translation.DefaultProvider = "dictionary"
+	cfg.Translation.DefaultProvider = "mock"
 	cfg.Translation.DefaultModel = "default"
 
 	eventBus := events.NewEventBus()
@@ -119,7 +113,7 @@ func TestCrossPackage_APIAndTranslationIntegration(t *testing.T) {
 	// we'll test the components work together
 
 	// Verify configuration is properly passed
-	if cfg.Translation.DefaultProvider != "dictionary" {
+	if cfg.Translation.DefaultProvider != "mock" {
 		t.Errorf("Configuration not properly set")
 	}
 

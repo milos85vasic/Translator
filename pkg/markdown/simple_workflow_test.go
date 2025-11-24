@@ -2,14 +2,14 @@ package markdown
 
 import (
 	"context"
+	"digital.vasic.translator/pkg/format"
+	"digital.vasic.translator/pkg/logger"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"digital.vasic.translator/pkg/logger"
 )
 
 func TestSimpleWorkflow_NewSimpleWorkflow(t *testing.T) {
@@ -118,6 +118,20 @@ func TestSimpleWorkflow_ConvertToMarkdown(t *testing.T) {
 	err = createEPUBFromDirectory(tmpDir, inputPath)
 	if err != nil {
 		t.Fatalf("Failed to create EPUB: %v", err)
+	}
+	
+	// Debug: Save EPUB for inspection
+	debugEPUB := "/tmp/debug_workflow_test.epub"
+	if err := copyFile(inputPath, debugEPUB); err != nil {
+		t.Logf("Warning: Failed to save debug EPUB: %v", err)
+	} else {
+		t.Logf("Debug EPUB saved to: %s", debugEPUB)
+		
+		// Check format detection
+		detector := format.NewDetector()
+		if detectedFormat, err := detector.DetectFile(inputPath); err == nil {
+			t.Logf("Detected format: %s", detectedFormat.String())
+		}
 	}
 
 	// Create workflow

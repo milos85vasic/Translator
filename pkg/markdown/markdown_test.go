@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"digital.vasic.translator/pkg/ebook"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -413,9 +414,8 @@ func TestEPUBToMarkdownCoverPreservation(t *testing.T) {
 		},
 	}
 
-	// Write EPUB
-	writer := ebook.NewEPUBWriter()
-	if err := writer.Write(book, epubPath); err != nil {
+	// Write EPUB using a simple approach
+	if err := createSimpleEPUB(book, epubPath); err != nil {
 		t.Fatalf("Failed to write EPUB: %v", err)
 	}
 
@@ -648,4 +648,47 @@ func TestImageDirectoryCreation(t *testing.T) {
 	if _, err := os.Stat(imagesDir); os.IsNotExist(err) {
 		t.Error("Images directory was not created")
 	}
+}
+
+// createSimpleEPUB creates a simple EPUB file from a Book structure for testing
+func createSimpleEPUB(book *ebook.Book, outputPath string) error {
+	// Use the MarkdownToEPUBConverter which creates valid EPUBs
+	converter := NewMarkdownToEPUBConverter()
+	
+	// Create a markdown representation of the book
+	var md strings.Builder
+	
+	// Add frontmatter
+	md.WriteString(fmt.Sprintf("---\ntitle: %s\n", book.Metadata.Title))
+	if len(book.Metadata.Authors) > 0 {
+		md.WriteString(fmt.Sprintf("authors: %s\n", strings.Join(book.Metadata.Authors, ", ")))
+	}
+	md.WriteString("---\n\n")
+	
+	// Add expected format after frontmatter (title, author, separators)
+	md.WriteString(fmt.Sprintf("# %s\n\n", book.Metadata.Title))
+	md.WriteString(fmt.Sprintf("**%s**\n\n", strings.Join(book.Metadata.Authors, ", ")))
+	md.WriteString("---\n\n")
+	
+	// Add chapters
+	for _, chapter := range book.Chapters {
+		md.WriteString(fmt.Sprintf("# %s\n\n", chapter.Title))
+		for _, section := range chapter.Sections {
+			md.WriteString(fmt.Sprintf("%s\n\n", section.Content))
+		}
+	}
+	
+	// Write to temporary markdown file
+	tmpMd := outputPath + ".md"
+	if err := os.WriteFile(tmpMd, []byte(md.String()), 0644); err != nil {
+		return err
+	}
+	
+	// Convert markdown to EPUB
+	err := converter.ConvertMarkdownToEPUB(tmpMd, outputPath)
+	
+	// Remove temp markdown AFTER conversion
+	os.Remove(tmpMd)
+	
+	return err
 }

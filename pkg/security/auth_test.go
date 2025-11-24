@@ -595,8 +595,8 @@ func TestValidateToken_BruteForceProtection(t *testing.T) {
 }
 
 func TestAuthService_SecretKeyRotation(t *testing.T) {
-	oldSecret := "old-secret-key"
-	newSecret := "new-secret-key"
+	oldSecret := "old-secret-key-16"
+	newSecret := "new-secret-key-16"
 
 	// Create auth services with old and new secrets
 	oldAuth := NewAuthService(oldSecret, time.Hour)

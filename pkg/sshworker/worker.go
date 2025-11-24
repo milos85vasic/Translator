@@ -82,6 +82,11 @@ func (w *SSHWorker) Connect(ctx context.Context) error {
 		return fmt.Errorf("no authentication method available")
 	}
 
+	// Validate port range
+	if w.port < 1 || w.port > 65535 {
+		return fmt.Errorf("invalid port number: %d (must be between 1 and 65535)", w.port)
+	}
+
 	config := &ssh.ClientConfig{
 		User:            w.username,
 		Auth:            authMethods,

@@ -6,18 +6,17 @@ import (
 	"testing"
 	"time"
 
-	"digital.vasic.translator/pkg/translator"
 )
 
 func TestAnthropicClient(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  translator.TranslationConfig
+		config  TranslationConfig
 		wantErr bool
 	}{
 		{
 			name: "valid config",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "anthropic",
 				APIKey:   "test-key",
 				Model:    "claude-3-sonnet-20240229",
@@ -27,7 +26,7 @@ func TestAnthropicClient(t *testing.T) {
 		},
 		{
 			name: "missing api key",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "anthropic",
 				Model:    "claude-3-sonnet-20240229",
 			},
@@ -35,7 +34,7 @@ func TestAnthropicClient(t *testing.T) {
 		},
 		{
 			name: "missing model",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "anthropic",
 				APIKey:   "test-key",
 			},
@@ -70,7 +69,7 @@ func TestAnthropicClient_Translate(t *testing.T) {
 		t.Skip("No ANTHROPIC_API_KEY provided for integration test")
 	}
 
-	client, err := NewAnthropicClient(translator.TranslationConfig{
+	client, err := NewAnthropicClient(TranslationConfig{
 		Provider: "anthropic",
 		APIKey:   apiKey,
 		Model:    "claude-3-haiku-20240307",
@@ -144,7 +143,7 @@ func TestAnthropicClient_Translate(t *testing.T) {
 
 func TestAnthropicClient_RequestStructure(t *testing.T) {
 	_ = &AnthropicClient{
-		config: translator.TranslationConfig{
+		config: TranslationConfig{
 			Provider: "anthropic",
 			Model:    "claude-3-sonnet-20240229",
 		},
@@ -174,11 +173,11 @@ func TestAnthropicClient_RequestStructure(t *testing.T) {
 func TestAnthropicClient_ErrorHandling(t *testing.T) {
 	tests := []struct {
 		name   string
-		config translator.TranslationConfig
+		config TranslationConfig
 	}{
 		{
 			name: "invalid api key",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "anthropic",
 				APIKey:   "invalid-key",
 				Model:    "claude-3-sonnet-20240229",
@@ -187,7 +186,7 @@ func TestAnthropicClient_ErrorHandling(t *testing.T) {
 		},
 		{
 			name: "invalid base url",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "anthropic",
 				APIKey:   "test-key",
 				Model:    "claude-3-sonnet-20240229",
@@ -217,7 +216,7 @@ func TestAnthropicClient_ErrorHandling(t *testing.T) {
 
 func TestAnthropicClient_ContextHandling(t *testing.T) {
 	client := &AnthropicClient{
-		config: translator.TranslationConfig{
+		config: TranslationConfig{
 			Provider: "anthropic",
 			Model:    "claude-3-sonnet-20240229",
 		},
@@ -245,7 +244,7 @@ func TestAnthropicClient_ModelValidation(t *testing.T) {
 
 	for _, model := range validModels {
 		t.Run("valid_model_"+model, func(t *testing.T) {
-			client, err := NewAnthropicClient(translator.TranslationConfig{
+			client, err := NewAnthropicClient(TranslationConfig{
 				Provider: "anthropic",
 				APIKey:   "test-key",
 				Model:    model,
@@ -269,7 +268,7 @@ func TestAnthropicClient_ModelValidation(t *testing.T) {
 
 	for _, model := range invalidModels {
 		t.Run("invalid_model_"+model, func(t *testing.T) {
-			client, err := NewAnthropicClient(translator.TranslationConfig{
+			client, err := NewAnthropicClient(TranslationConfig{
 				Provider: "anthropic",
 				APIKey:   "test-key",
 				Model:    model,

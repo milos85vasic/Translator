@@ -3,7 +3,6 @@ package llm
 import (
 	"bytes"
 	"context"
-	"digital.vasic.translator/pkg/translator"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +12,7 @@ import (
 
 // OllamaClient implements Ollama API client (local LLM)
 type OllamaClient struct {
-	config     translator.TranslationConfig
+	config     TranslationConfig
 	httpClient *http.Client
 	baseURL    string
 }
@@ -34,7 +33,7 @@ type OllamaResponse struct {
 }
 
 // NewOllamaClient creates a new Ollama client
-func NewOllamaClient(config translator.TranslationConfig) (*OllamaClient, error) {
+func NewOllamaClient(config TranslationConfig) (*OllamaClient, error) {
 	baseURL := config.BaseURL
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"

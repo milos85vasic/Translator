@@ -3,7 +3,6 @@ package llm
 import (
 	"bytes"
 	"context"
-	"digital.vasic.translator/pkg/translator"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,7 +14,7 @@ import (
 
 // QwenClient implements Qwen (Alibaba Cloud) LLM API client with OAuth support
 type QwenClient struct {
-	config       translator.TranslationConfig
+	config       TranslationConfig
 	httpClient   *http.Client
 	baseURL      string
 	oauthToken   *QwenOAuthToken
@@ -70,7 +69,7 @@ type QwenUsage struct {
 }
 
 // NewQwenClient creates a new Qwen client with OAuth support
-func NewQwenClient(config translator.TranslationConfig) (*QwenClient, error) {
+func NewQwenClient(config TranslationConfig) (*QwenClient, error) {
 	credDir := os.Getenv("HOME")
 	if credDir == "" {
 		credDir = "."

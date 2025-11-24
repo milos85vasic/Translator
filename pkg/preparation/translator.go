@@ -49,6 +49,8 @@ func (pat *PreparationAwareTranslator) TranslateBook(
 	// Run preparation phase if enabled
 	if pat.enablePreparation {
 		if err := pat.runPreparation(ctx, book, eventBus, sessionID); err != nil {
+			// Enhanced error handling - emit error event but continue
+			translator.EmitError(eventBus, sessionID, "preparation phase failed", fmt.Errorf("preparation phase failed: %w", err))
 			log.Printf("Warning: Preparation phase failed: %v", err)
 			translator.EmitProgress(eventBus, sessionID,
 				"Preparation phase failed, continuing with standard translation",

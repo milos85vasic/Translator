@@ -3,17 +3,17 @@ package llm
 import (
 	"bytes"
 	"context"
-	"digital.vasic.translator/pkg/translator"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // OpenAIClient implements OpenAI API client
 type OpenAIClient struct {
-	config     translator.TranslationConfig
+	config     TranslationConfig
 	httpClient *http.Client
 	baseURL    string
 }
@@ -57,9 +57,45 @@ type Usage struct {
 }
 
 // NewOpenAIClient creates a new OpenAI client
-func NewOpenAIClient(config translator.TranslationConfig) (*OpenAIClient, error) {
+func NewOpenAIClient(config TranslationConfig) (*OpenAIClient, error) {
 	if config.APIKey == "" {
 		return nil, fmt.Errorf("OpenAI API key is required")
+	}
+
+	// Validate model if provided (skip validation for delegated providers)
+	if config.Model != "" {
+		// Skip validation for non-OpenAI providers that delegate to OpenAI
+		isDelegated := false
+		if config.Provider != "" && config.Provider != "openai" {
+			isDelegated = true
+		}
+		
+		if !isDelegated {
+			if strings.TrimSpace(config.Model) == "" {
+				return nil, fmt.Errorf("model cannot be empty or whitespace")
+			}
+			validModels := ValidModels[ProviderOpenAI]
+			modelValid := false
+			for _, validModel := range validModels {
+				if config.Model == validModel {
+					modelValid = true
+					break
+				}
+			}
+			if !modelValid {
+				return nil, fmt.Errorf("model '%s' is not valid for OpenAI. Valid models: %v", 
+					config.Model, validModels)
+			}
+		}
+	}
+
+	// Validate temperature if provided
+	if temp, exists := config.Options["temperature"]; exists {
+		if tempFloat, ok := temp.(float64); ok {
+			if tempFloat < 0.0 || tempFloat > 2.0 {
+				return nil, fmt.Errorf("temperature %.1f is invalid for OpenAI. Must be between 0.0 and 2.0", tempFloat)
+			}
+		}
 	}
 
 	baseURL := config.BaseURL

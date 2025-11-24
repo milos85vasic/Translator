@@ -3,17 +3,17 @@ package llm
 import (
 	"bytes"
 	"context"
-	"digital.vasic.translator/pkg/translator"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // AnthropicClient implements Anthropic Claude API client
 type AnthropicClient struct {
-	config     translator.TranslationConfig
+	config     TranslationConfig
 	httpClient *http.Client
 	baseURL    string
 }
@@ -55,9 +55,31 @@ type AnthropicUsage struct {
 }
 
 // NewAnthropicClient creates a new Anthropic client
-func NewAnthropicClient(config translator.TranslationConfig) (*AnthropicClient, error) {
+func NewAnthropicClient(config TranslationConfig) (*AnthropicClient, error) {
 	if config.APIKey == "" {
 		return nil, fmt.Errorf("Anthropic API key is required")
+	}
+
+	// Validate model
+	if config.Model != "" {
+		if strings.TrimSpace(config.Model) == "" {
+			return nil, fmt.Errorf("model cannot be empty or whitespace")
+		}
+		validModels := ValidModels[ProviderAnthropic]
+		modelValid := false
+		for _, validModel := range validModels {
+			if config.Model == validModel {
+				modelValid = true
+				break
+			}
+		}
+		if !modelValid {
+			return nil, fmt.Errorf("model '%s' is not valid for Anthropic. Valid models: %v", 
+				config.Model, validModels)
+		}
+	} else {
+		// Empty model is not allowed for explicit configuration
+		return nil, fmt.Errorf("model must be specified for Anthropic client")
 	}
 
 	baseURL := config.BaseURL

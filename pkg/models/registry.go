@@ -40,10 +40,17 @@ func NewRegistry() *ModelRegistry {
 
 // registerDefaultModels adds translation-optimized models to the registry
 func (r *ModelRegistry) registerDefaultModels() {
+	// Helper function to panic on registration errors (since these are pre-defined models)
+	mustRegister := func(model *ModelInfo) {
+		if err := r.Register(model); err != nil {
+			panic(fmt.Sprintf("Failed to register default model %s: %v", model.ID, err))
+		}
+	}
+
 	// PRIORITY 1: Translation-Specialized Models
 
 	// Hunyuan-MT-7B: Best 7B translation model (using bartowski GGUF)
-	r.Register(&ModelInfo{
+	if err := r.Register(&ModelInfo{
 		ID:             "hunyuan-mt-7b-q4",
 		Name:           "Hunyuan-MT 7B (Q4)",
 		Description:    "Translation-optimized 7B model with commercial-grade quality for 33 languages",
@@ -58,9 +65,11 @@ func (r *ModelRegistry) registerDefaultModels() {
 		LicenseType:    "Apache-2.0",
 		RequiresGPU:    false,
 		ContextLength:  8192,
-	})
+	}); err != nil {
+		panic(fmt.Sprintf("Failed to register default model: %v", err))
+	}
 
-	r.Register(&ModelInfo{
+	mustRegister(&ModelInfo{
 		ID:             "hunyuan-mt-7b-q8",
 		Name:           "Hunyuan-MT 7B (Q8)",
 		Description:    "High-quality translation with Q8 quantization for better accuracy",
@@ -78,7 +87,7 @@ func (r *ModelRegistry) registerDefaultModels() {
 	})
 
 	// Aya-23: Multilingual translation model
-	r.Register(&ModelInfo{
+	mustRegister(&ModelInfo{
 		ID:             "aya-23-8b-q4",
 		Name:           "Aya 23 8B (Q4)",
 		Description:    "Multilingual model supporting 23 languages with strong translation",
@@ -98,7 +107,7 @@ func (r *ModelRegistry) registerDefaultModels() {
 	// PRIORITY 2: General-Purpose Models with Strong Translation (NOW PRIORITY 1)
 
 	// Qwen2.5: Excellent for multilingual tasks
-	r.Register(&ModelInfo{
+	mustRegister(&ModelInfo{
 		ID:             "qwen2.5-7b-instruct-q4",
 		Name:           "Qwen 2.5 7B Instruct (Q4)",
 		Description:    "Multilingual model with strong Russian and Serbian support",
@@ -116,7 +125,7 @@ func (r *ModelRegistry) registerDefaultModels() {
 	})
 
 	// Mistral: Good general-purpose with translation capability
-	r.Register(&ModelInfo{
+	mustRegister(&ModelInfo{
 		ID:             "mistral-7b-instruct-q4",
 		Name:           "Mistral 7B Instruct v0.3 (Q4)",
 		Description:    "High-quality general-purpose model with good translation",
@@ -136,7 +145,7 @@ func (r *ModelRegistry) registerDefaultModels() {
 	// PRIORITY 3: Larger Models (for high-RAM systems)
 
 	// Qwen2.5 14B: Better quality for systems with 16GB+ RAM
-	r.Register(&ModelInfo{
+	mustRegister(&ModelInfo{
 		ID:             "qwen2.5-14b-instruct-q4",
 		Name:           "Qwen 2.5 14B Instruct (Q4)",
 		Description:    "Larger model for high-quality translation on capable systems",
@@ -154,7 +163,7 @@ func (r *ModelRegistry) registerDefaultModels() {
 	})
 
 	// Qwen2.5 27B: Professional-grade for high-end systems
-	r.Register(&ModelInfo{
+	mustRegister(&ModelInfo{
 		ID:             "qwen2.5-27b-instruct-q4",
 		Name:           "Qwen 2.5 27B Instruct (Q4)",
 		Description:    "Professional-grade translation for systems with 32GB+ RAM",
@@ -174,7 +183,7 @@ func (r *ModelRegistry) registerDefaultModels() {
 	// PRIORITY 4: Compact Models (for low-resource systems)
 
 	// Phi-3: Efficient small model
-	r.Register(&ModelInfo{
+	mustRegister(&ModelInfo{
 		ID:             "phi-3-mini-4k-q4",
 		Name:           "Phi-3 Mini 3.8B (Q4)",
 		Description:    "Compact model for resource-constrained systems",
@@ -192,7 +201,7 @@ func (r *ModelRegistry) registerDefaultModels() {
 	})
 
 	// Gemma 2: Google's efficient model
-	r.Register(&ModelInfo{
+	mustRegister(&ModelInfo{
 		ID:             "gemma-2-9b-it-q4",
 		Name:           "Gemma 2 9B Instruct (Q4)",
 		Description:    "Google's efficient multilingual model",
@@ -211,8 +220,64 @@ func (r *ModelRegistry) registerDefaultModels() {
 }
 
 // Register adds a model to the registry
-func (r *ModelRegistry) Register(model *ModelInfo) {
+func (r *ModelRegistry) Register(model *ModelInfo) error {
+	// Validate required fields
+	if model.ID == "" {
+		return fmt.Errorf("model ID is required")
+	}
+	if model.Name == "" {
+		return fmt.Errorf("model name is required")
+	}
+	if model.SourceURL == "" {
+		return fmt.Errorf("source URL is required")
+	}
+	if model.Parameters == 0 {
+		return fmt.Errorf("parameters count is required")
+	}
+	if model.MinRAM == 0 {
+		return fmt.Errorf("minimum RAM is required")
+	}
+	if model.ContextLength == 0 {
+		return fmt.Errorf("context length is required")
+	}
+
+	// Validate URL format
+	if !strings.HasPrefix(model.SourceURL, "http://") && !strings.HasPrefix(model.SourceURL, "https://") {
+		return fmt.Errorf("source URL must be a valid HTTP/HTTPS URL")
+	}
+
+	// Validate quantization type
+	if model.QuantType != "" {
+		validQuants := []string{"Q4", "Q4_K_M", "Q4_K_S", "Q5", "Q5_K_M", "Q5_K_S", "Q8", "Q8_0", "F16", "F32"}
+		valid := false
+		for _, q := range validQuants {
+			if model.QuantType == q {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("invalid quantization type '%s'. Valid types: %v", model.QuantType, validQuants)
+		}
+	}
+
+	// Validate quality rating
+	if model.Quality != "" {
+		validQualities := []string{"excellent", "good", "moderate"}
+		valid := false
+		for _, q := range validQualities {
+			if model.Quality == q {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("invalid quality rating '%s'. Valid ratings: %v", model.Quality, validQualities)
+		}
+	}
+
 	r.models[model.ID] = model
+	return nil
 }
 
 // Get retrieves a model by ID

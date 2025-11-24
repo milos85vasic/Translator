@@ -9,6 +9,36 @@ import (
 	"strings"
 )
 
+// TranslationConfig holds translation configuration (local copy to avoid import cycle)
+type TranslationConfig struct {
+	SourceLang     string
+	TargetLang     string
+	SourceLanguage string // Alias for SourceLang
+	TargetLanguage string // Alias for TargetLang
+	Provider       string
+	Model          string
+	APIKey         string
+	BaseURL        string
+	Script         string // Script type (cyrillic, latin)
+	Options        map[string]interface{}
+}
+
+// ConvertFromTranslatorConfig converts from parent package config to local config
+func ConvertFromTranslatorConfig(config translator.TranslationConfig) TranslationConfig {
+	return TranslationConfig{
+		SourceLang:     config.SourceLang,
+		TargetLang:     config.TargetLang,
+		SourceLanguage: config.SourceLanguage,
+		TargetLanguage: config.TargetLanguage,
+		Provider:       config.Provider,
+		Model:          config.Model,
+		APIKey:         config.APIKey,
+		BaseURL:        config.BaseURL,
+		Script:         config.Script,
+		Options:        config.Options,
+	}
+}
+
 // Provider represents LLM provider types
 type Provider string
 
@@ -23,11 +53,113 @@ const (
 	ProviderLlamaCpp  Provider = "llamacpp"
 )
 
+// ValidModels defines valid model names for each provider
+var ValidModels = map[Provider][]string{
+	ProviderOpenAI:    {"gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o"},
+	ProviderAnthropic: {"claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"},
+	ProviderZhipu:     {"glm-4", "glm-3-turbo"},
+	ProviderDeepSeek:  {"deepseek-chat", "deepseek-coder"},
+	ProviderQwen:      {"qwen-max", "qwen-plus", "qwen-turbo"},
+	ProviderGemini:    {"gemini-pro", "gemini-pro-vision"},
+	ProviderOllama:    {"llama2", "codellama", "mistral", "vicuna"}, // Common Ollama models
+	ProviderLlamaCpp:  {"llama2", "mistral", "vicuna"}, // Common local models
+}
+
 // LLMTranslator implements LLM-based translation
 type LLMTranslator struct {
-	*translator.BaseTranslator
+	*BaseTranslator
 	provider Provider
 	client   LLMClient
+}
+
+// GetStats returns translation statistics (implements translator.Translator interface)
+func (lt *LLMTranslator) GetStats() translator.TranslationStats {
+	stats := lt.BaseTranslator.GetStats()
+	return translator.TranslationStats{
+		Total:      stats.Total,
+		Translated: stats.Translated,
+		Cached:     stats.Cached,
+		Errors:     stats.Errors,
+	}
+}
+
+// BaseTranslator provides common functionality (local copy to avoid import cycle)
+type BaseTranslator struct {
+	config TranslationConfig
+	stats  TranslationStats
+	cache  map[string]string
+}
+
+// TranslationStats tracks translation statistics (local copy to avoid import cycle)
+type TranslationStats struct {
+	Total      int
+	Translated int
+	Cached     int
+	Errors     int
+}
+
+// NewBaseTranslator creates a new base translator
+func NewBaseTranslator(config TranslationConfig) *BaseTranslator {
+	return &BaseTranslator{
+		config: config,
+		stats:  TranslationStats{},
+		cache:  make(map[string]string),
+	}
+}
+
+// GetStats returns translation statistics
+func (bt *BaseTranslator) GetStats() TranslationStats {
+	return bt.stats
+}
+
+// CheckCache checks if translation is cached
+func (bt *BaseTranslator) CheckCache(text string) (string, bool) {
+	if translated, ok := bt.cache[text]; ok {
+		bt.stats.Cached++
+		return translated, true
+	}
+	return "", false
+}
+
+// AddToCache adds a translation to cache
+func (bt *BaseTranslator) AddToCache(original, translated string) {
+	bt.cache[original] = translated
+}
+
+// UpdateStats updates translation statistics
+func (bt *BaseTranslator) UpdateStats(success bool) {
+	bt.stats.Total++
+	if success {
+		bt.stats.Translated++
+	} else {
+		bt.stats.Errors++
+	}
+}
+
+// EmitProgress emits a progress event
+func EmitProgress(eventBus *events.EventBus, sessionID, message string, data map[string]interface{}) {
+	if eventBus == nil {
+		return
+	}
+
+	event := events.NewEvent(events.EventTranslationProgress, message, data)
+	event.SessionID = sessionID
+	eventBus.Publish(event)
+}
+
+// EmitError emits an error event
+func EmitError(eventBus *events.EventBus, sessionID, message string, err error) {
+	if eventBus == nil {
+		return
+	}
+
+	data := map[string]interface{}{
+		"error": err.Error(),
+	}
+
+	event := events.NewEvent(events.EventTranslationError, message, data)
+	event.SessionID = sessionID
+	eventBus.Publish(event)
 }
 
 // LLMClient interface for different LLM providers
@@ -38,7 +170,38 @@ type LLMClient interface {
 
 // NewLLMTranslator creates a new LLM translator
 func NewLLMTranslator(config translator.TranslationConfig) (*LLMTranslator, error) {
+	return NewLLMTranslatorWithConfig(ConvertFromTranslatorConfig(config))
+}
+
+// NewLLMTranslatorWithConfig creates a new LLM translator with local config
+func NewLLMTranslatorWithConfig(config TranslationConfig) (*LLMTranslator, error) {
 	provider := Provider(config.Provider)
+
+	// Validate provider
+	if provider == "" {
+		return nil, fmt.Errorf("provider must be specified")
+	}
+
+	// Validate model if provided
+	if config.Model != "" {
+		if validModels, exists := ValidModels[provider]; exists {
+			modelValid := false
+			for _, validModel := range validModels {
+				if config.Model == validModel {
+					modelValid = true
+					break
+				}
+			}
+			if !modelValid {
+				return nil, fmt.Errorf("model '%s' is not valid for provider '%s'. Valid models: %v", 
+					config.Model, provider, validModels)
+			}
+		}
+		// For Ollama and LlamaCpp, we allow custom models but warn
+		if provider == ProviderOllama || provider == ProviderLlamaCpp {
+			fmt.Printf("Warning: Using custom model '%s' with %s provider\n", config.Model, provider)
+		}
+	}
 
 	var client LLMClient
 	var err error
@@ -69,7 +232,7 @@ func NewLLMTranslator(config translator.TranslationConfig) (*LLMTranslator, erro
 	}
 
 	return &LLMTranslator{
-		BaseTranslator: translator.NewBaseTranslator(config),
+		BaseTranslator: NewBaseTranslator(config),
 		provider:       provider,
 		client:         client,
 	}, nil
@@ -264,7 +427,7 @@ func (lt *LLMTranslator) splitBySentences(text string) []string {
 	return sentences
 }
 
-// TranslateWithProgress translates and reports progress
+// TranslateWithProgress translates and reports progress (implements translator.Translator interface)
 func (lt *LLMTranslator) TranslateWithProgress(
 	ctx context.Context,
 	text string,

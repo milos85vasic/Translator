@@ -10,12 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"digital.vasic.translator/pkg/translator"
 )
 
 // GeminiClient implements the LLMClient interface for Google Gemini
 type GeminiClient struct {
-	config     translator.TranslationConfig
+	config     TranslationConfig
 	httpClient *http.Client
 	baseURL    string
 }
@@ -81,7 +80,7 @@ type GeminiUsageMetadata struct {
 }
 
 // NewGeminiClient creates a new Gemini client
-func NewGeminiClient(config translator.TranslationConfig) (*GeminiClient, error) {
+func NewGeminiClient(config TranslationConfig) (*GeminiClient, error) {
 	baseURL := config.BaseURL
 	if baseURL == "" {
 		baseURL = "https://generativelanguage.googleapis.com/v1beta"

@@ -5,7 +5,6 @@ import (
 	"context"
 	"digital.vasic.translator/pkg/hardware"
 	"digital.vasic.translator/pkg/models"
-	"digital.vasic.translator/pkg/translator"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,7 +15,7 @@ import (
 
 // LlamaCppClient implements llama.cpp integration for local LLM inference
 type LlamaCppClient struct {
-	config       translator.TranslationConfig
+	config       TranslationConfig
 	modelPath    string
 	modelInfo    *models.ModelInfo
 	hardwareCaps *hardware.Capabilities
@@ -26,7 +25,7 @@ type LlamaCppClient struct {
 }
 
 // NewLlamaCppClient creates a new llama.cpp client with automatic hardware detection and model selection
-func NewLlamaCppClient(config translator.TranslationConfig) (*LlamaCppClient, error) {
+func NewLlamaCppClient(config TranslationConfig) (*LlamaCppClient, error) {
 	// Detect hardware capabilities
 	detector := hardware.NewDetector()
 	caps, err := detector.Detect()

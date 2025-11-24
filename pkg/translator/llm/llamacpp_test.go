@@ -4,7 +4,6 @@ import (
 	"context"
 	"digital.vasic.translator/pkg/hardware"
 	"digital.vasic.translator/pkg/models"
-	"digital.vasic.translator/pkg/translator"
 	"os"
 	"os/exec"
 	"strings"
@@ -49,7 +48,7 @@ func TestNewLlamaCppClient(t *testing.T) {
 
 	// Note: This test will attempt to auto-download a model
 	// We use a minimal config to test initialization
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 		// Don't specify a model - let it auto-select
 	}
@@ -100,7 +99,7 @@ func TestNewLlamaCppClient(t *testing.T) {
 
 	t.Run("Specific model selection", func(t *testing.T) {
 		// Try to use Hunyuan-MT-7B Q4 (recommended for translation)
-		configWithModel := translator.TranslationConfig{
+		configWithModel := TranslationConfig{
 			Provider: "llamacpp",
 			Model:    "hunyuan-mt-7b-q4",
 		}
@@ -140,7 +139,7 @@ func TestValidate(t *testing.T) {
 	}
 
 	// Create a client
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 	}
 
@@ -203,7 +202,7 @@ func TestTranslate_Integration(t *testing.T) {
 	}
 
 	// Create client
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 		// Let it auto-select the best available model
 	}
@@ -318,7 +317,7 @@ func TestGPUAcceleration_Integration(t *testing.T) {
 	t.Logf("GPU detected: %s", caps.GPUType)
 
 	// Create client
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 	}
 
@@ -362,7 +361,7 @@ func TestPerformanceMetrics_Integration(t *testing.T) {
 		t.Skip("llama.cpp not installed")
 	}
 
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 	}
 
@@ -419,7 +418,7 @@ func TestContextLength_Integration(t *testing.T) {
 		t.Skip("llama.cpp not installed")
 	}
 
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 	}
 
@@ -468,7 +467,7 @@ func TestTranslateCancellation_Integration(t *testing.T) {
 		t.Skip("llama.cpp not installed")
 	}
 
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 	}
 
@@ -503,7 +502,7 @@ func TestGetters(t *testing.T) {
 		t.Skip("llama.cpp not installed")
 	}
 
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 	}
 
@@ -557,7 +556,7 @@ func TestModelDownloadAndUse_E2E(t *testing.T) {
 	// 3. Model download (if needed)
 	// 4. Translation execution
 
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 		// Let system auto-select best model
 	}
@@ -610,7 +609,7 @@ func BenchmarkTranslate(b *testing.B) {
 		b.Skip("llama.cpp not installed")
 	}
 
-	config := translator.TranslationConfig{
+	config := TranslationConfig{
 		Provider: "llamacpp",
 	}
 

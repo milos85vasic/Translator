@@ -3,7 +3,6 @@ package llm
 import (
 	"bytes"
 	"context"
-	"digital.vasic.translator/pkg/translator"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +12,7 @@ import (
 
 // ZhipuClient implements Zhipu AI (GLM) API client
 type ZhipuClient struct {
-	config     translator.TranslationConfig
+	config     TranslationConfig
 	httpClient *http.Client
 	baseURL    string
 }
@@ -56,7 +55,7 @@ type ZhipuUsage struct {
 }
 
 // NewZhipuClient creates a new Zhipu client
-func NewZhipuClient(config translator.TranslationConfig) (*ZhipuClient, error) {
+func NewZhipuClient(config TranslationConfig) (*ZhipuClient, error) {
 	if config.APIKey == "" {
 		return nil, fmt.Errorf("Zhipu API key is required")
 	}

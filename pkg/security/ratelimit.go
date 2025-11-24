@@ -11,6 +11,7 @@ import (
 type RateLimiter struct {
 	mu       sync.RWMutex
 	limiters map[string]*rate.Limiter
+	lastUsed map[string]time.Time
 	rps      int
 	burst    int
 }
@@ -19,6 +20,7 @@ type RateLimiter struct {
 func NewRateLimiter(rps, burst int) *RateLimiter {
 	rl := &RateLimiter{
 		limiters: make(map[string]*rate.Limiter),
+		lastUsed: make(map[string]time.Time),
 		rps:      rps,
 		burst:    burst,
 	}
@@ -31,37 +33,50 @@ func NewRateLimiter(rps, burst int) *RateLimiter {
 
 // Allow checks if a request is allowed for a given key
 func (rl *RateLimiter) Allow(key string) bool {
-	limiter := rl.getLimiter(key)
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	
+	// Update last used time
+	rl.lastUsed[key] = time.Now()
+	
+	limiter := rl.getLimiterUnsafe(key)
 	return limiter.Allow()
 }
 
 // Wait waits until a request is allowed
 func (rl *RateLimiter) Wait(key string) {
-	limiter := rl.getLimiter(key)
+	rl.mu.Lock()
+	
+	// Update last used time
+	rl.lastUsed[key] = time.Now()
+	
+	limiter := rl.getLimiterUnsafe(key)
+	rl.mu.Unlock()
+	
 	limiter.Wait(nil)
 }
 
-// getLimiter gets or creates a limiter for a key
-func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
-	rl.mu.RLock()
+// getLimiterUnsafe gets or creates a limiter for a key (caller must hold lock)
+func (rl *RateLimiter) getLimiterUnsafe(key string) *rate.Limiter {
 	limiter, exists := rl.limiters[key]
-	rl.mu.RUnlock()
-
 	if exists {
-		return limiter
-	}
-
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	// Double-check after acquiring write lock
-	if limiter, exists := rl.limiters[key]; exists {
 		return limiter
 	}
 
 	limiter = rate.NewLimiter(rate.Limit(rl.rps), rl.burst)
 	rl.limiters[key] = limiter
 	return limiter
+}
+
+// getLimiter gets or creates a limiter for a key
+func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	
+	// Update last used time
+	rl.lastUsed[key] = time.Now()
+	
+	return rl.getLimiterUnsafe(key)
 }
 
 // cleanup removes old limiters
@@ -71,8 +86,16 @@ func (rl *RateLimiter) cleanup() {
 
 	for range ticker.C {
 		rl.mu.Lock()
-		// In a real implementation, you'd track last access time
-		// For now, we keep all limiters
+		now := time.Now()
+		
+		// Remove limiters not used in the last hour
+		for key, lastUsed := range rl.lastUsed {
+			if now.Sub(lastUsed) > time.Hour {
+				delete(rl.limiters, key)
+				delete(rl.lastUsed, key)
+			}
+		}
+		
 		rl.mu.Unlock()
 	}
 }
@@ -82,6 +105,7 @@ func (rl *RateLimiter) Reset(key string) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 	delete(rl.limiters, key)
+	delete(rl.lastUsed, key)
 }
 
 // GetStats returns rate limiter statistics

@@ -6,18 +6,17 @@ import (
 	"testing"
 	"time"
 
-	"digital.vasic.translator/pkg/translator"
 )
 
 func TestDeepSeekClient(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  translator.TranslationConfig
+		config  TranslationConfig
 		wantErr bool
 	}{
 		{
 			name: "valid config",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "deepseek",
 				APIKey:   "test-key",
 				Model:    "deepseek-chat",
@@ -27,7 +26,7 @@ func TestDeepSeekClient(t *testing.T) {
 		},
 		{
 			name: "missing api key",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "deepseek",
 				Model:    "deepseek-chat",
 			},
@@ -35,7 +34,7 @@ func TestDeepSeekClient(t *testing.T) {
 		},
 		{
 			name: "missing model",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "deepseek",
 				APIKey:   "test-key",
 			},
@@ -43,7 +42,7 @@ func TestDeepSeekClient(t *testing.T) {
 		},
 		{
 			name: "invalid provider",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "invalid",
 				APIKey:   "test-key",
 				Model:    "deepseek-chat",
@@ -79,7 +78,7 @@ func TestDeepSeekClient_Translate(t *testing.T) {
 		t.Skip("No DEEPSEEK_API_KEY provided for integration test")
 	}
 
-	client, err := NewDeepSeekClient(translator.TranslationConfig{
+	client, err := NewDeepSeekClient(TranslationConfig{
 		Provider: "deepseek",
 		APIKey:   apiKey,
 		Model:    "deepseek-chat",
@@ -163,7 +162,7 @@ func TestDeepSeekClient_Translate(t *testing.T) {
 func TestDeepSeekClient_RequestStructure(t *testing.T) {
 	_ = &DeepSeekClient{
 		OpenAIClient: &OpenAIClient{
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "deepseek",
 				Model:    "deepseek-chat",
 			},
@@ -207,11 +206,11 @@ func TestDeepSeekClient_RequestStructure(t *testing.T) {
 func TestDeepSeekClient_ErrorHandling(t *testing.T) {
 	tests := []struct {
 		name   string
-		config translator.TranslationConfig
+		config TranslationConfig
 	}{
 		{
 			name: "invalid api key",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "deepseek",
 				APIKey:   "invalid-key",
 				Model:    "deepseek-chat",
@@ -220,7 +219,7 @@ func TestDeepSeekClient_ErrorHandling(t *testing.T) {
 		},
 		{
 			name: "invalid base url",
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "deepseek",
 				APIKey:   "test-key",
 				Model:    "deepseek-chat",
@@ -251,7 +250,7 @@ func TestDeepSeekClient_ErrorHandling(t *testing.T) {
 func TestDeepSeekClient_ContextHandling(t *testing.T) {
 	client := &DeepSeekClient{
 		OpenAIClient: &OpenAIClient{
-			config: translator.TranslationConfig{
+			config: TranslationConfig{
 				Provider: "deepseek",
 				Model:    "deepseek-chat",
 			},
@@ -279,7 +278,7 @@ func TestDeepSeekClient_ModelValidation(t *testing.T) {
 
 	for _, model := range validModels {
 		t.Run("valid_model_"+model, func(t *testing.T) {
-			client, err := NewDeepSeekClient(translator.TranslationConfig{
+			client, err := NewDeepSeekClient(TranslationConfig{
 				Provider: "deepseek",
 				APIKey:   "test-key",
 				Model:    model,
@@ -303,7 +302,7 @@ func TestDeepSeekClient_ModelValidation(t *testing.T) {
 
 	for _, model := range invalidModels {
 		t.Run("invalid_model_"+model, func(t *testing.T) {
-			client, err := NewDeepSeekClient(translator.TranslationConfig{
+			client, err := NewDeepSeekClient(TranslationConfig{
 				Provider: "deepseek",
 				APIKey:   "test-key",
 				Model:    model,
@@ -356,11 +355,14 @@ func TestDeepSeekClient_TemperatureValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := translator.TranslationConfig{
+			config := TranslationConfig{
 				Provider: "deepseek",
 				APIKey:   "test-key",
 				Model:    "deepseek-chat",
 				BaseURL:  "https://api.deepseek.com",
+				Options: map[string]interface{}{
+					"temperature": tt.temperature,
+				},
 			}
 
 			client, err := NewDeepSeekClient(config)

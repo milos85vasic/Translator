@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -176,6 +177,7 @@ func (sc *SecurityConfig) loadKnownHosts(filename string) (ssh.HostKeyCallback, 
 		// Parse the public key
 		publicKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(keyType + " " + keyData))
 		if err != nil {
+			log.Printf("Warning: Failed to parse SSH key for host %s: %v", parts[0], err)
 			continue // Invalid key
 		}
 

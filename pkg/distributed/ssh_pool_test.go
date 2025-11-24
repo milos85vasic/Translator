@@ -9,37 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"digital.vasic.translator/pkg/sshworker"
 	"digital.vasic.translator/pkg/logger"
+	"digital.vasic.translator/pkg/sshworker"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 )
-
-// Task represents a translation task for testing
-type Task struct {
-	ID   string                 `json:"id"`
-	Type string                 `json:"type"`
-	Data map[string]interface{} `json:"data"`
-}
-
-// TaskResult represents result of a task execution
-type TaskResult struct {
-	TaskID    string                 `json:"task_id"`
-	WorkerID  string                 `json:"worker_id"`
-	Success   bool                   `json:"success"`
-	Duration  time.Duration          `json:"duration"`
-	Timestamp time.Time              `json:"timestamp"`
-	Data      map[string]interface{} `json:"data"`
-}
-
-// WorkerInfo represents worker information
-type WorkerInfo struct {
-	ID       string `json:"id"`
-	Address  string `json:"address"`
-	Username string `json:"username"`
-}
 
 // mockSSHConnection implements a mock SSH connection for testing
 type mockSSHConnection struct {
@@ -87,9 +63,9 @@ func newMockSSHPoolImplementation(maxActive, maxIdle int) *mockSSHPoolImplementa
 func (m *mockSSHPoolImplementation) GetConnection(ctx context.Context, address string, config *ssh.ClientConfig) (*ssh.Client, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.getCount++
-	
+
 	if len(m.connections) >= m.maxActive {
 		return nil, errors.New("pool: maximum active connections reached")
 	}
@@ -104,14 +80,14 @@ func (m *mockSSHPoolImplementation) GetConnection(ctx context.Context, address s
 		// Note: In a real implementation, this would be an actual SSH client
 	}
 	m.connections[address] = conn
-	
+
 	return conn.client, nil
 }
 
 func (m *mockSSHPoolImplementation) PutConnection(address string, client *ssh.Client) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.putCount++
 	return nil
 }
@@ -119,7 +95,7 @@ func (m *mockSSHPoolImplementation) PutConnection(address string, client *ssh.Cl
 func (m *mockSSHPoolImplementation) CloseConnection(address string, client *ssh.Client) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.closeCount++
 	if conn, exists := m.connections[address]; exists {
 		conn.Close()
@@ -131,7 +107,7 @@ func (m *mockSSHPoolImplementation) CloseConnection(address string, client *ssh.
 func (m *mockSSHPoolImplementation) CloseAll() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	for address, conn := range m.connections {
 		conn.Close()
 		delete(m.connections, address)
@@ -142,7 +118,7 @@ func (m *mockSSHPoolImplementation) CloseAll() error {
 func (m *mockSSHPoolImplementation) GetStats() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	return map[string]interface{}{
 		"total_connections": len(m.connections),
 		"max_active":        m.maxActive,
@@ -157,7 +133,7 @@ func (m *mockSSHPoolImplementation) GetStats() map[string]interface{} {
 // TestSSHPoolBasicOperations tests basic connection pool operations
 func TestSSHPoolBasicOperations(t *testing.T) {
 	pool := newMockSSHPoolImplementation(10, 5)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -212,7 +188,7 @@ func TestSSHPoolBasicOperations(t *testing.T) {
 // TestSSHPoolConcurrency tests concurrent access to the connection pool
 func TestSSHPoolConcurrency(t *testing.T) {
 	pool := newMockSSHPoolImplementation(50, 20)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -232,7 +208,7 @@ func TestSSHPoolConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			for j := 0; j < operationsPerGoroutine; j++ {
 				address := fmt.Sprintf("test%d.example.com:22", id%10) // 10 unique addresses
 				client, err := pool.GetConnection(ctx, address, config)
@@ -261,7 +237,7 @@ func TestSSHPoolConcurrency(t *testing.T) {
 func TestSSHPoolLimits(t *testing.T) {
 	const maxConnections = 5
 	pool := newMockSSHPoolImplementation(maxConnections, 2)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -301,7 +277,7 @@ func TestSSHPoolLimits(t *testing.T) {
 // TestSSHPoolTimeout tests connection timeout behavior
 func TestSSHPoolTimeout(t *testing.T) {
 	pool := newMockSSHPoolImplementation(10, 5)
-	
+
 	// Very short timeout
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
@@ -324,7 +300,7 @@ func TestSSHPoolTimeout(t *testing.T) {
 // TestSSHPoolCloseAll tests closing all connections in the pool
 func TestSSHPoolCloseAll(t *testing.T) {
 	pool := newMockSSHPoolImplementation(20, 10)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -359,7 +335,7 @@ func TestSSHPoolCloseAll(t *testing.T) {
 // TestSSHPoolResourceLeak tests for resource leaks in the connection pool
 func TestSSHPoolResourceLeak(t *testing.T) {
 	pool := newMockSSHPoolImplementation(100, 50)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -371,12 +347,13 @@ func TestSSHPoolResourceLeak(t *testing.T) {
 	}
 
 	// Create and close many connections
+	var err error
 	for i := 0; i < 1000; i++ {
 		address := fmt.Sprintf("test%d.example.com:22", i%20) // 20 unique addresses
-		
+
 		client, err := pool.GetConnection(ctx, address, config)
 		require.NoError(t, err)
-		
+
 		// Sometimes close directly, sometimes return to pool
 		if i%3 == 0 {
 			err = pool.CloseConnection(address, client)
@@ -390,11 +367,12 @@ func TestSSHPoolResourceLeak(t *testing.T) {
 	// Check for resource leaks
 	stats := pool.GetStats()
 	assert.Equal(t, 1000, stats["get_count"])
-	assert.Equal(t, 1000, stats["put_count"]) + stats["close_count"]) // Put or close called each time
-	assert.True(t, stats["total_connections"] <= 20) // Max 20 unique addresses
+	putCount := stats["put_count"].(int) + stats["close_count"].(int)
+	assert.Equal(t, 1000, putCount)                        // Put or close called each time
+	assert.True(t, stats["total_connections"].(int) <= 20) // Max 20 unique addresses
 
 	// Clean up
-	err := pool.CloseAll()
+	err = pool.CloseAll()
 	assert.NoError(t, err)
 	assert.Equal(t, 0, stats["total_connections"])
 }
@@ -402,7 +380,7 @@ func TestSSHPoolResourceLeak(t *testing.T) {
 // TestSSHPoolIntegrationWithWorker tests SSH pool integration with worker system
 func TestSSHPoolIntegrationWithWorker(t *testing.T) {
 	pool := newMockSSHPoolImplementation(10, 5)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -426,26 +404,18 @@ func TestSSHPoolIntegrationWithWorker(t *testing.T) {
 	assert.NotNil(t, sshClient)
 
 	// Create SSH worker
-	config := sshworker.SSHWorkerConfig{
+	workerConfig := sshworker.SSHWorkerConfig{
 		Host:     "worker1.example.com",
 		Port:     22,
 		Username: "test",
 	}
-	logger := logger.NewLogger(logger.LoggerConfig{})
-	sshWorker, err := sshworker.NewSSHWorker(config, logger)
+	log := logger.NewLogger(logger.LoggerConfig{})
+	sshWorker, err := sshworker.NewSSHWorker(workerConfig, log)
 	assert.NoError(t, err)
 	assert.NotNil(t, sshWorker)
 
-	// Test worker functionality
-	task := worker.Task{
-		ID:   "task-1",
-		Type: "translation",
-		Data: map[string]interface{}{
-			"text": "Hello world",
-		},
-	}
-
-	result, err := sshWorker.ExecuteTask(ctx, task)
+	// Test worker functionality with ExecuteCommand
+	result, err := sshWorker.ExecuteCommand(ctx, "echo 'Hello world'")
 	// Note: In mock environment, this might fail, but we're testing the integration
 	if err == nil {
 		assert.NotNil(t, result)
@@ -459,7 +429,7 @@ func TestSSHPoolIntegrationWithWorker(t *testing.T) {
 // BenchmarkSSHPoolGet benchmarks connection pool get operations
 func BenchmarkSSHPoolGet(b *testing.B) {
 	pool := newMockSSHPoolImplementation(1000, 100)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -476,7 +446,7 @@ func BenchmarkSSHPoolGet(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		address := addresses[i%len(addresses)]
 		client, err := pool.GetConnection(ctx, address, config)
@@ -490,7 +460,7 @@ func BenchmarkSSHPoolGet(b *testing.B) {
 // BenchmarkSSHPoolGetPut benchmarks get and put operations together
 func BenchmarkSSHPoolGetPut(b *testing.B) {
 	pool := newMockSSHPoolImplementation(1000, 100)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -507,14 +477,14 @@ func BenchmarkSSHPoolGetPut(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		address := addresses[i%len(addresses)]
 		client, err := pool.GetConnection(ctx, address, config)
 		if err != nil {
 			b.Fatal(err)
 		}
-		
+
 		err = pool.PutConnection(address, client)
 		if err != nil {
 			b.Fatal(err)

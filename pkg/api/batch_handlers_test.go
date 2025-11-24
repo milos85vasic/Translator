@@ -64,7 +64,7 @@ func setupTestRouter() (*gin.Engine, *Handler) {
 	eventBus := events.NewEventBus()
 	cache := cache.NewCache(time.Hour, true)
 	userRepo := &models.InMemoryUserRepository{}
-	authService := security.NewUserAuthService("test-secret", time.Hour, userRepo)
+	authService := security.NewUserAuthService("test-secret-key-16-chars", time.Hour, userRepo)
 	wsHub := websocket.NewHub(eventBus)
 
 	handler := NewHandler(cfg, eventBus, cache, authService, wsHub, nil)
@@ -707,7 +707,7 @@ func TestConfigurationValidation(t *testing.T) {
 	eventBus := events.NewEventBus()
 	cache := cache.NewCache(time.Hour, true)
 	userRepo := &models.InMemoryUserRepository{}
-	authService := security.NewUserAuthService("test-secret", time.Hour, userRepo)
+	authService := security.NewUserAuthService("test-secret-key-16-chars", time.Hour, userRepo)
 	wsHub := websocket.NewHub(eventBus)
 
 	handler := NewHandler(cfg, eventBus, cache, authService, wsHub, nil)

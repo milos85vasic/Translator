@@ -279,14 +279,14 @@ func TestPairingWorkflow(t *testing.T) {
 
 	t.Run("Successful Pairing", func(t *testing.T) {
 		client := NewTestSSHClient()
-		
+
 		// Test connection
 		err := client.Connect(server.Address())
 		require.NoError(t, err)
-		
+
 		// Verify connection is established
 		assert.NotNil(t, client.client)
-		
+
 		// Test disconnection
 		err = client.Disconnect()
 		assert.NoError(t, err)
@@ -338,17 +338,17 @@ func TestConcurrentPairing(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			client := NewTestSSHClient()
 			err := client.Connect(server.Address())
 			if err != nil {
 				errs <- err
 				return
 			}
-			
+
 			// Simulate some work
 			time.Sleep(100 * time.Millisecond)
-			
+
 			err = client.Disconnect()
 			if err != nil {
 				errs <- err
@@ -410,7 +410,7 @@ func TestPairingSecurity(t *testing.T) {
 
 		// SSH connection should be established
 		assert.NotNil(t, client)
-		
+
 		// Verify connection state
 		assert.Equal(t, testUser, client.Conn.User())
 	})
@@ -449,7 +449,7 @@ func TestPairingSecurity(t *testing.T) {
 func TestPairingErrorHandling(t *testing.T) {
 	t.Run("Server Not Running", func(t *testing.T) {
 		client := NewTestSSHClient()
-		
+
 		// Try to connect to non-existent server
 		err := client.Connect("127.0.0.1:12345")
 		assert.Error(t, err)
@@ -458,7 +458,7 @@ func TestPairingErrorHandling(t *testing.T) {
 
 	t.Run("Network Errors", func(t *testing.T) {
 		client := NewTestSSHClient()
-		
+
 		// Try to connect to invalid address
 		err := client.Connect("invalid.address:12345")
 		assert.Error(t, err)
@@ -502,7 +502,7 @@ func TestPairingPerformance(t *testing.T) {
 		client := NewTestSSHClient()
 		err := client.Connect(server.Address())
 		require.NoError(t, err)
-		
+
 		err = client.Disconnect()
 		require.NoError(t, err)
 	}
@@ -511,7 +511,7 @@ func TestPairingPerformance(t *testing.T) {
 	avgDuration := duration / numConnections
 
 	t.Logf("Average connection time: %v", avgDuration)
-	
+
 	// Performance assertion - each connection should be reasonably fast
 	assert.Less(t, avgDuration, 1*time.Second, "Connection took too long")
 }
@@ -527,10 +527,10 @@ func TestPairingContext(t *testing.T) {
 
 	t.Run("Context Cancellation", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		
+
 		// Cancel context immediately
 		cancel()
-		
+
 		config := &ssh.ClientConfig{
 			User: testUser,
 			Auth: []ssh.AuthMethod{
@@ -557,7 +557,7 @@ func TestPairingContext(t *testing.T) {
 	})
 
 	t.Run("Context Timeout", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+		_, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 		defer cancel()
 
 		config := &ssh.ClientConfig{
@@ -597,7 +597,7 @@ func BenchmarkPairing(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			
+
 			err = client.Disconnect()
 			if err != nil {
 				b.Fatal(err)

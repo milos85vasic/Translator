@@ -3,11 +3,12 @@ package coordination
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 	"time"
-	
-	"digital.vasic.translator/pkg/translator"
+
 	"digital.vasic.translator/pkg/events"
+	"digital.vasic.translator/pkg/translator"
 )
 
 func TestNewMultiLLMCoordinator_NoAPIKeys(t *testing.T) {
@@ -233,7 +234,7 @@ func TestMultiLLMCoordinator_TranslateWithConsensus(t *testing.T) {
 				Available: true,
 			},
 			{
-				ID: "instance2", 
+				ID: "instance2",
 				Translator: &mockTranslator{
 					responses: []string{"Hello world"},
 					callCount: 0,
@@ -281,7 +282,7 @@ func TestMultiLLMCoordinator_TranslateWithConsensus_InsufficientInstances(t *tes
 
 func TestMultiLLMCoordinator_TranslateWithConsensus_NoInstances(t *testing.T) {
 	coordinator := &MultiLLMCoordinator{
-		instances: make([]*LLMInstance, 0),
+		instances:    make([]*LLMInstance, 0),
 		currentIndex: 0,
 	}
 
@@ -293,18 +294,18 @@ func TestMultiLLMCoordinator_TranslateWithConsensus_NoInstances(t *testing.T) {
 
 func TestMultiLLMCoordinator_reenableInstanceAfterDelay(t *testing.T) {
 	instance := &LLMInstance{
-		ID: "test-instance",
+		ID:        "test-instance",
 		Available: false,
 	}
 
 	coordinator := &MultiLLMCoordinator{}
-	
+
 	// Test that the function exists and doesn't panic
 	go coordinator.reenableInstanceAfterDelay(instance, time.Millisecond*10)
-	
+
 	// Wait a bit to ensure the goroutine runs
 	time.Sleep(time.Millisecond * 20)
-	
+
 	// Note: We can't easily test the actual availability change without
 	// exposing internal state, but we can at least verify the function runs
 }
@@ -319,13 +320,13 @@ func TestMultiLLMCoordinator_GetProviderList(t *testing.T) {
 	}
 
 	providers := coordinator.getProviderList()
-	
+
 	// Should return unique providers
 	expectedProviders := []string{"openai", "anthropic"}
 	if len(providers) != len(expectedProviders) {
 		t.Errorf("Expected %d providers, got %d", len(expectedProviders), len(providers))
 	}
-	
+
 	for _, expected := range expectedProviders {
 		found := false
 		for _, actual := range providers {
@@ -344,35 +345,44 @@ func TestMultiLLMCoordinator_EmitEvent(t *testing.T) {
 	eventBus := events.NewEventBus()
 	receivedEvent := false
 	var eventData events.Event
-	
+	var mu sync.Mutex
+
 	eventBus.Subscribe("test.event", func(event events.Event) {
+		mu.Lock()
+		defer mu.Unlock()
 		receivedEvent = true
 		eventData = event
 	})
-	
+
 	coordinator := &MultiLLMCoordinator{
-		eventBus: eventBus,
+		eventBus:  eventBus,
 		sessionID: "test-session",
 	}
-	
+
 	coordinator.emitEvent(events.Event{
-		Type: "test.event",
-		Message: "test message",
-		Data: map[string]interface{}{"test": "data"},
+		Type:      "test.event",
+		Message:   "test message",
+		Data:      map[string]interface{}{"test": "data"},
 		SessionID: "test-session",
 	})
-	
+
 	time.Sleep(time.Millisecond * 10) // Allow event to propagate
-	
-	if !receivedEvent {
+
+	mu.Lock()
+	received := receivedEvent
+	data := eventData.Data
+	sessionID := eventData.SessionID
+	mu.Unlock()
+
+	if !received {
 		t.Error("Event was not emitted")
 	}
-	
-	if eventData.Data["test"] != "data" {
-		t.Errorf("Expected event data with test='data', got %v", eventData.Data)
+
+	if data["test"] != "data" {
+		t.Errorf("Expected event data with test='data', got %v", data)
 	}
-	
-	if eventData.SessionID != "test-session" {
-		t.Errorf("Expected session_id='test-session', got %v", eventData.SessionID)
+
+	if sessionID != "test-session" {
+		t.Errorf("Expected session_id='test-session', got %v", sessionID)
 	}
 }

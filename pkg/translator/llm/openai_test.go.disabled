@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"digital.vasic.translator/pkg/translator/llm/openai"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -37,7 +35,7 @@ func TestOpenAIBasicTranslation(t *testing.T) {
 		t.Skipf("Skipping actual API call: %v", err)
 		return
 	}
-	
+
 	assert.NotEmpty(t, result)
 	assert.Equal(t, "openai", trans.GetProviderName())
 }
@@ -65,7 +63,7 @@ func TestOpenAIErrorHandling(t *testing.T) {
 	if err == nil {
 		t.Log("Unexpected success with invalid API key")
 	}
-	
+
 	// Verify error handling
 	if err != nil {
 		assert.Error(t, err)
@@ -210,7 +208,7 @@ func BenchmarkOpenAICreation(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		_, err := openai.NewOpenAIClient(config)
 		if err != nil {
@@ -234,7 +232,7 @@ func TestOpenAIMockFunctionality(t *testing.T) {
 			Model:   "gpt-4",
 			Timeout: 30 * time.Second,
 		}
-		
+
 		assert.Equal(t, "test-key", config.APIKey)
 		assert.Equal(t, "gpt-4", config.Model)
 		assert.Equal(t, 30*time.Second, config.Timeout)

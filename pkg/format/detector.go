@@ -195,25 +195,46 @@ func (d *Detector) isAZW3File(filename string) bool {
 	}
 	defer r.Close()
 
-	// Look for AZW3 specific files
-	azw3Indicators := []string{
+	// General EPUB indicators (both EPUB and AZW3 have these)
+	generalIndicators := []string{
 		"mimetype",
 		"OEBPS",
 		"META-INF",
 	}
 
-	hasIndicators := 0
+	// AZW3-specific indicators (only AZW3 has these)
+	azw3Specific := []string{
+		"kindle:embed",
+		"amzn-eastock",
+		"kindle-fonts",
+		"kindle:enclosure",
+		"kindle:meta",
+	}
+
+	hasGeneral := 0
+	hasSpecific := false
+	
 	for _, f := range r.File {
-		for _, indicator := range azw3Indicators {
+		// Check for general indicators
+		for _, indicator := range generalIndicators {
 			if strings.Contains(f.Name, indicator) {
-				hasIndicators++
+				hasGeneral++
+				break
+			}
+		}
+		
+		// Check for AZW3-specific indicators
+		for _, specific := range azw3Specific {
+			if strings.Contains(f.Name, specific) {
+				hasSpecific = true
 				break
 			}
 		}
 	}
 
-	// If we have multiple indicators, likely AZW3
-	return hasIndicators >= 2
+	// Only consider it AZW3 if we have general indicators AND specific AZW3 files
+	// Regular EPUBs will have general indicators but not specific ones
+	return hasGeneral >= 2 && hasSpecific
 }
 
 // detectByContent detects format by analyzing content

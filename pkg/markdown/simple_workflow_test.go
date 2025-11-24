@@ -1,7 +1,6 @@
 package markdown
 
 import (
-	"archive/zip"
 	"context"
 	"fmt"
 	"os"
@@ -424,37 +423,7 @@ func TestSimpleWorkflow_EndToEndWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EPUB: %v", err)
 	}
-
-	// Verify EPUB was created successfully
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		t.Fatalf("EPUB file was not created at %s", inputPath)
-	}
 	
-	// Debug: Check if the created file is a valid ZIP (EPUB)
-	epubFile, err := os.Open(inputPath)
-	if err != nil {
-		t.Fatalf("Failed to open created EPUB: %v", err)
-	}
-	defer epubFile.Close()
-	
-	// Read first few bytes to check for ZIP signature
-	signature := make([]byte, 4)
-	_, err = epubFile.Read(signature)
-	if err != nil {
-		t.Fatalf("Failed to read EPUB signature: %v", err)
-	}
-	
-	if signature[0] != 0x50 || signature[1] != 0x4B {
-		t.Fatalf("Created file is not a valid ZIP/EPUB file")
-	}
-	
-	// Try to open as ZIP to validate structure
-	zipReader, err := zip.OpenReader(inputPath)
-	if err != nil {
-		t.Fatalf("Created EPUB file is not a valid ZIP: %v", err)
-	}
-	zipReader.Close()
-
 	// Create mock LLM client
 	mockLLM := &MockLLMClient{
 		responses: map[string]string{

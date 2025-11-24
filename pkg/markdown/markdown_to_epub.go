@@ -33,7 +33,7 @@ func (c *MarkdownToEPUBConverter) ConvertMarkdownToEPUB(mdPath, epubPath string)
 		return fmt.Errorf("failed to read markdown: %w", err)
 	}
 
-	// Parse markdown into chapters
+		// Parse markdown into chapters
 	chapters, metadata, coverPath, err := c.parseMarkdown(string(content), filepath.Dir(mdPath))
 	if err != nil {
 		return fmt.Errorf("failed to parse markdown: %w", err)
@@ -329,8 +329,23 @@ func (c *MarkdownToEPUBConverter) writeContentOPF(zw *zip.Writer, chapters []ebo
 	for _, author := range c.metadata.Authors {
 		opf.WriteString(fmt.Sprintf("    <dc:creator>%s</dc:creator>\n", c.escapeXML(author)))
 	}
+	if c.metadata.Description != "" {
+		opf.WriteString(fmt.Sprintf("    <dc:description>%s</dc:description>\n", c.escapeXML(c.metadata.Description)))
+	}
+	if c.metadata.Publisher != "" {
+		opf.WriteString(fmt.Sprintf("    <dc:publisher>%s</dc:publisher>\n", c.escapeXML(c.metadata.Publisher)))
+	}
 	opf.WriteString(fmt.Sprintf("    <dc:language>%s</dc:language>\n", c.metadata.Language))
-	opf.WriteString("    <dc:identifier id=\"BookID\">urn:uuid:generated</dc:identifier>\n")
+	
+	// Use ISBN as identifier if available, otherwise generate UUID
+	if c.metadata.ISBN != "" {
+		opf.WriteString(fmt.Sprintf("    <dc:identifier id=\"BookID\">%s</dc:identifier>\n", c.escapeXML(c.metadata.ISBN)))
+	} else {
+		opf.WriteString("    <dc:identifier id=\"BookID\">urn:uuid:generated</dc:identifier>\n")
+	}
+	if c.metadata.Date != "" {
+		opf.WriteString(fmt.Sprintf("    <dc:date>%s</dc:date>\n", c.escapeXML(c.metadata.Date)))
+	}
 	opf.WriteString("  </metadata>\n")
 
 	// Manifest

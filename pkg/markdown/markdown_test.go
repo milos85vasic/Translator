@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -422,6 +423,19 @@ func TestEPUBToMarkdownCoverPreservation(t *testing.T) {
 		t.Fatalf("Failed to write EPUB: %v", err)
 	}
 	
+	// Check if the EPUB is properly created
+	if out, err := exec.Command("unzip", "-l", epubPath).CombinedOutput(); err == nil {
+		t.Logf("EPUB contents:\n%s", string(out))
+	}
+	
+	// Check what's inside the temp directory
+	if files, err := os.ReadDir(tmpDir); err == nil {
+		t.Logf("Files in temp dir:")
+		for _, f := range files {
+			t.Logf("  %s", f.Name())
+		}
+	}
+
 	// Debug: Save EPUB for inspection
 	debugEPUB := "/tmp/debug_cover_test.epub"
 	if err := copyFile(epubPath, debugEPUB); err != nil {
@@ -608,9 +622,14 @@ func TestRoundTripPreservation(t *testing.T) {
 
 	// Step 1: Create source EPUB
 	sourceEPUB := tmpDir + "/source.epub"
-	writer := ebook.NewEPUBWriter()
-	if err := writer.Write(originalBook, sourceEPUB); err != nil {
+	if err := createSimpleEPUB(originalBook, sourceEPUB); err != nil {
 		t.Fatalf("Failed to write source EPUB: %v", err)
+	}
+	
+	// Debug: Check source EPUB format
+	detector := format.NewDetector()
+	if fmt, err := detector.DetectFile(sourceEPUB); err == nil {
+		t.Logf("Source EPUB format: %s", fmt.String())
 	}
 
 	// Step 2: Convert to Markdown
@@ -713,6 +732,19 @@ func createSimpleEPUB(book *ebook.Book, outputPath string) error {
 	if len(book.Metadata.Authors) > 0 {
 		md.WriteString(fmt.Sprintf("authors: %s\n", strings.Join(book.Metadata.Authors, ", ")))
 	}
+	if book.Metadata.Description != "" {
+		md.WriteString(fmt.Sprintf("description: %s\n", book.Metadata.Description))
+	}
+	if book.Metadata.Publisher != "" {
+		md.WriteString(fmt.Sprintf("publisher: %s\n", book.Metadata.Publisher))
+	}
+	md.WriteString(fmt.Sprintf("language: %s\n", book.Metadata.Language))
+	if book.Metadata.ISBN != "" {
+		md.WriteString(fmt.Sprintf("isbn: %s\n", book.Metadata.ISBN))
+	}
+	if book.Metadata.Date != "" {
+		md.WriteString(fmt.Sprintf("date: %s\n", book.Metadata.Date))
+	}
 	if len(book.Metadata.Cover) > 0 {
 		md.WriteString("cover: cover.jpg\n")
 	}
@@ -740,7 +772,8 @@ func createSimpleEPUB(book *ebook.Book, outputPath string) error {
 	// Save cover to temporary file if present
 	var coverPath string
 	if len(book.Metadata.Cover) > 0 {
-		coverPath = outputPath + "_cover.jpg"
+		// Use just "cover.jpg" in the same directory as the markdown file
+		coverPath = filepath.Join(filepath.Dir(outputPath), "cover.jpg")
 		if err := os.WriteFile(coverPath, book.Metadata.Cover, 0644); err != nil {
 			return err
 		}

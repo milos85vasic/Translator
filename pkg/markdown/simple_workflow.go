@@ -318,8 +318,8 @@ func createEPUBFromDirectory(sourceDir, outputPath string) error {
 			return err
 		}
 
-		// Skip directories and the mimetype file (already added)
-		if info.IsDir() || filepath.Base(path) == "mimetype" {
+		// Skip directories, the mimetype file (already added), and .epub files
+		if info.IsDir() || filepath.Base(path) == "mimetype" || strings.HasSuffix(filepath.Base(path), ".epub") {
 			return nil
 		}
 

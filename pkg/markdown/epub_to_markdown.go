@@ -154,24 +154,24 @@ func (c *EPUBToMarkdownConverter) parseEPUBStructure(r *zip.ReadCloser) (*ebook.
 		return nil, nil, "", fmt.Errorf("container.xml not found")
 	}
 
+	// Extract OPF directory path
+	opfDir := ""
+	if idx := strings.LastIndex(opfPath, "/"); idx != -1 {
+		opfDir = opfPath[:idx+1]
+	}
+
 	// Parse content.opf
 	var metadata ebook.Metadata
 	var contentFiles []string
 	for _, f := range r.File {
 		if f.Name == opfPath {
 			var err error
-			metadata, contentFiles, err = c.parseOPF(f)
+			metadata, contentFiles, err = c.parseOPF(f, r, opfDir)
 			if err != nil {
 				return nil, nil, "", err
 			}
 			break
 		}
-	}
-
-	// Extract OPF directory path
-	opfDir := ""
-	if idx := strings.LastIndex(opfPath, "/"); idx != -1 {
-		opfDir = opfPath[:idx+1]
 	}
 
 	return &metadata, contentFiles, opfDir, nil
@@ -206,7 +206,7 @@ func (c *EPUBToMarkdownConverter) parseContainer(f *zip.File) (string, error) {
 }
 
 // parseOPF parses content.opf for metadata and spine
-func (c *EPUBToMarkdownConverter) parseOPF(f *zip.File) (ebook.Metadata, []string, error) {
+func (c *EPUBToMarkdownConverter) parseOPF(f *zip.File, r *zip.ReadCloser, opfDir string) (ebook.Metadata, []string, error) {
 	rc, err := f.Open()
 	if err != nil {
 		return ebook.Metadata{}, nil, err
@@ -269,6 +269,32 @@ func (c *EPUBToMarkdownConverter) parseOPF(f *zip.File) (ebook.Metadata, []strin
 	idToHref := make(map[string]string)
 	for _, item := range pkg.Manifest.Item {
 		idToHref[item.ID] = item.Href
+	}
+
+	// Extract cover if present
+	var coverHref string
+	for _, item := range pkg.Manifest.Item {
+		if item.ID == "cover" && strings.HasSuffix(item.Href, ".jpg") {
+			coverHref = item.Href
+			break
+		}
+	}
+
+	if coverHref != "" {
+		// Find cover file in zip
+		for _, f := range r.File {
+			if f.Name == opfDir+"/"+coverHref || f.Name == coverHref {
+				rc, err := f.Open()
+				if err == nil {
+					defer rc.Close()
+					coverData, err := io.ReadAll(rc)
+					if err == nil {
+						metadata.Cover = coverData
+					}
+				}
+				break
+			}
+		}
 	}
 
 	// Get content files in spine order

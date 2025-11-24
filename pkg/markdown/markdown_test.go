@@ -2,8 +2,10 @@ package markdown
 
 import (
 	"digital.vasic.translator/pkg/ebook"
+	"digital.vasic.translator/pkg/format"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -392,6 +394,7 @@ func BenchmarkInlineFormatting(b *testing.B) {
 func TestEPUBToMarkdownCoverPreservation(t *testing.T) {
 	// Create temp directory
 	tmpDir := t.TempDir()
+	t.Logf("Temp directory: %s", tmpDir)
 
 	// Create test EPUB with cover
 	epubPath := tmpDir + "/test.epub"
@@ -418,9 +421,56 @@ func TestEPUBToMarkdownCoverPreservation(t *testing.T) {
 	if err := createSimpleEPUB(book, epubPath); err != nil {
 		t.Fatalf("Failed to write EPUB: %v", err)
 	}
+	
+	// Debug: Save EPUB for inspection
+	debugEPUB := "/tmp/debug_cover_test.epub"
+	if err := copyFile(epubPath, debugEPUB); err != nil {
+		t.Logf("Warning: Failed to save debug EPUB: %v", err)
+	} else {
+		t.Logf("Debug EPUB saved to: %s", debugEPUB)
+		
+		// Check what's inside
+		detector := format.NewDetector()
+		if detectedFormat, err := detector.DetectFile(epubPath); err == nil {
+			t.Logf("Detected format of original: %s", detectedFormat.String())
+		}
+		if detectedFormat, err := detector.DetectFile(debugEPUB); err == nil {
+			t.Logf("Detected format of copy: %s", detectedFormat.String())
+		}
+	}
+	
+	// Check what's actually in the EPUB
+	if err := os.WriteFile("/tmp/debug_cover_filelist.txt", []byte(fmt.Sprintf("Listing files in %s\n", epubPath)), 0644); err == nil {
+		bash := func(cmd string) string {
+			if out, err := exec.Command("bash", "-c", cmd).CombinedOutput(); err == nil {
+				return string(out)
+			}
+			return fmt.Sprintf("Error running: %s", cmd)
+		}
+		output := bash(fmt.Sprintf("unzip -l %s", epubPath))
+		os.WriteFile("/tmp/debug_cover_filelist.txt", []byte(output), 0644)
+	}
 
 	// Convert to markdown
 	converter := NewEPUBToMarkdownConverter(false, "")
+	
+	// Debug: Check what UniversalParser sees
+	parser := ebook.NewUniversalParser()
+	detector := format.NewDetector()
+	if detectedFormat, err := detector.DetectFile(epubPath); err == nil {
+		t.Logf("Detector says: %s", detectedFormat.String())
+	}
+	if book, err := parser.Parse(epubPath); err != nil {
+		t.Logf("Parser error: %v", err)
+	} else {
+		t.Logf("Parser succeeded, format: %s", book.Format.String())
+		if len(book.Metadata.Cover) > 0 {
+			t.Logf("Parser found cover: %d bytes", len(book.Metadata.Cover))
+		} else {
+			t.Log("Parser did not find cover")
+		}
+	}
+	
 	if err := converter.ConvertEPUBToMarkdown(epubPath, mdPath); err != nil {
 		t.Fatalf("Failed to convert EPUB to Markdown: %v", err)
 	}
@@ -663,6 +713,9 @@ func createSimpleEPUB(book *ebook.Book, outputPath string) error {
 	if len(book.Metadata.Authors) > 0 {
 		md.WriteString(fmt.Sprintf("authors: %s\n", strings.Join(book.Metadata.Authors, ", ")))
 	}
+	if len(book.Metadata.Cover) > 0 {
+		md.WriteString("cover: cover.jpg\n")
+	}
 	md.WriteString("---\n\n")
 	
 	// Add expected format after frontmatter (title, author, separators)
@@ -682,6 +735,17 @@ func createSimpleEPUB(book *ebook.Book, outputPath string) error {
 	tmpMd := outputPath + ".md"
 	if err := os.WriteFile(tmpMd, []byte(md.String()), 0644); err != nil {
 		return err
+	}
+	
+	// Save cover to temporary file if present
+	var coverPath string
+	if len(book.Metadata.Cover) > 0 {
+		coverPath = outputPath + "_cover.jpg"
+		if err := os.WriteFile(coverPath, book.Metadata.Cover, 0644); err != nil {
+			return err
+		}
+		// Remove temporary cover file after conversion
+		defer os.Remove(coverPath)
 	}
 	
 	// Convert markdown to EPUB

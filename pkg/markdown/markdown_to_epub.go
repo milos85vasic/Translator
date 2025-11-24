@@ -278,6 +278,17 @@ func (c *MarkdownToEPUBConverter) createEPUB(chapters []ebook.Chapter, outputPat
 			return fmt.Errorf("failed to write chapter content: %w", err)
 		}
 	}
+	
+	// Write cover image if present
+	if len(c.metadata.Cover) > 0 {
+		coverWriter, err := zipWriter.Create("OEBPS/cover.jpg")
+		if err != nil {
+			return fmt.Errorf("failed to create cover file: %w", err)
+		}
+		if _, err := coverWriter.Write(c.metadata.Cover); err != nil {
+			return fmt.Errorf("failed to write cover content: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -325,6 +336,12 @@ func (c *MarkdownToEPUBConverter) writeContentOPF(zw *zip.Writer, chapters []ebo
 	// Manifest
 	opf.WriteString("  <manifest>\n")
 	opf.WriteString("    <item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/>\n")
+	
+	// Add cover if present
+	if len(c.metadata.Cover) > 0 {
+		opf.WriteString("    <item id=\"cover\" href=\"cover.jpg\" media-type=\"image/jpeg\"/>\n")
+	}
+	
 	for i := 1; i <= len(chapters); i++ {
 		opf.WriteString(fmt.Sprintf("    <item id=\"chapter%d\" href=\"chapter%d.xhtml\" media-type=\"application/xhtml+xml\"/>\n", i, i))
 	}

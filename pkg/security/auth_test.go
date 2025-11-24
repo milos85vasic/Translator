@@ -13,7 +13,7 @@ import (
 
 // TestGenerateToken tests JWT token generation
 func TestGenerateToken(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	token, err := auth.GenerateToken("user123", "testuser", []string{"admin", "user"})
 
@@ -26,7 +26,7 @@ func TestGenerateToken(t *testing.T) {
 
 // TestValidateToken_Valid tests validation of a valid token
 func TestValidateToken_Valid(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	// Generate token
 	token, err := auth.GenerateToken("user123", "testuser", []string{"admin"})
@@ -45,7 +45,7 @@ func TestValidateToken_Valid(t *testing.T) {
 // TestValidateToken_Expired tests validation of an expired token
 func TestValidateToken_Expired(t *testing.T) {
 	// Create auth service with very short TTL
-	auth := NewAuthService("test-secret-key", time.Millisecond)
+	auth := NewAuthService("test-secret-key-16", time.Millisecond)
 
 	// Generate token
 	token, err := auth.GenerateToken("user123", "testuser", []string{"user"})
@@ -64,7 +64,7 @@ func TestValidateToken_Expired(t *testing.T) {
 
 // TestValidateToken_Invalid tests validation of invalid token strings
 func TestValidateToken_Invalid(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	tests := []struct {
 		name  string
@@ -88,7 +88,7 @@ func TestValidateToken_Invalid(t *testing.T) {
 
 // TestValidateToken_Tampered tests detection of tampered tokens
 func TestValidateToken_Tampered(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	// Generate valid token
 	token, err := auth.GenerateToken("user123", "testuser", []string{"user"})
@@ -106,8 +106,8 @@ func TestValidateToken_Tampered(t *testing.T) {
 
 // TestValidateToken_WrongSecret tests validation with wrong secret
 func TestValidateToken_WrongSecret(t *testing.T) {
-	auth1 := NewAuthService("secret-1", time.Hour)
-	auth2 := NewAuthService("secret-2", time.Hour)
+	auth1 := NewAuthService("secret-key-16-chars-1", time.Hour)
+	auth2 := NewAuthService("secret-key-16-chars-2", time.Hour)
 
 	// Generate token with auth1
 	token, err := auth1.GenerateToken("user123", "testuser", []string{"user"})
@@ -314,7 +314,7 @@ func TestAPIKeyStore_MultipleKeys(t *testing.T) {
 
 // BenchmarkGenerateToken benchmarks token generation
 func BenchmarkGenerateToken(b *testing.B) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -324,7 +324,7 @@ func BenchmarkGenerateToken(b *testing.B) {
 
 // BenchmarkValidateToken benchmarks token validation
 func BenchmarkValidateToken(b *testing.B) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 	token, _ := auth.GenerateToken("user123", "testuser", []string{"admin"})
 
 	b.ResetTimer()
@@ -458,7 +458,7 @@ func TestGenerateToken_EdgeCases(t *testing.T) {
 		},
 	}
 
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -477,7 +477,7 @@ func TestGenerateToken_EdgeCases(t *testing.T) {
 }
 
 func TestValidateToken_MalformedTokens(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	tests := []struct {
 		name        string
@@ -547,7 +547,7 @@ func TestValidateToken_MalformedTokens(t *testing.T) {
 }
 
 func TestValidateToken_BruteForceProtection(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 	
 	// Generate a valid token
 	validToken, err := auth.GenerateToken("user123", "testuser", []string{"user"})
@@ -608,7 +608,7 @@ func TestAuthService_SecretKeyRotation(t *testing.T) {
 }
 
 func TestAuthService_RoleBasedSecurity(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	// Generate tokens with different roles
 	adminToken, err := auth.GenerateToken("admin123", "admin", []string{"admin", "user"})
@@ -674,7 +674,7 @@ func TestAuthService_TokenExpirationEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			auth := NewAuthService("test-secret-key", tt.ttl)
+			auth := NewAuthService("test-secret-key-16", tt.ttl)
 
 			token, err := auth.GenerateToken("user123", "testuser", []string{"user"})
 			
@@ -708,7 +708,7 @@ func TestAuthService_TokenExpirationEdgeCases(t *testing.T) {
 }
 
 func TestAuthService_ConcurrentAccess(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	// Test concurrent token generation and validation
 	numGoroutines := 100
@@ -810,7 +810,7 @@ func TestAuthService_InputValidation(t *testing.T) {
 }
 
 func TestAuthService_MemoryLeakPrevention(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	// Generate and validate many tokens to test for memory leaks
 	numTokens := 1000
@@ -838,7 +838,7 @@ func TestAuthService_MemoryLeakPrevention(t *testing.T) {
 }
 
 func TestAuthService_TokenRefresh(t *testing.T) {
-	auth := NewAuthService("test-secret-key", time.Hour)
+	auth := NewAuthService("test-secret-key-16", time.Hour)
 
 	// Generate initial token
 	originalToken, err := auth.GenerateToken("user123", "testuser", []string{"user"})
@@ -849,8 +849,11 @@ func TestAuthService_TokenRefresh(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "user123", originalClaims.UserID)
 
+	// Small delay to ensure different timestamps
+	time.Sleep(1 * time.Millisecond)
+
 	// Generate new token (refresh)
-	refreshedToken, err := auth.GenerateToken("user123", "testuser", []string{"user"})
+	refreshedToken, err := auth.RefreshToken(originalClaims)
 	require.NoError(t, err)
 
 	// Validate refreshed token

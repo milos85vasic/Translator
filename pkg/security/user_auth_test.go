@@ -49,7 +49,7 @@ type TokenClaims struct {
 
 func TestUserAuth_AuthenticateUser(t *testing.T) {
 	auth := NewUserAuth(AuthConfig{
-		JWTSecret:    "test-secret-key",
+		JWTSecret:    "test-secret-key-16",
 		TokenExpiry:  time.Hour,
 		PasswordCost: 12,
 	})
@@ -440,7 +440,7 @@ func TestUserAuth_UserManagement(t *testing.T) {
 
 func TestUserAuth_SecurityEdgeCases(t *testing.T) {
 	auth := NewUserAuth(AuthConfig{
-		JWTSecret:    "test-secret-key",
+		JWTSecret:    "test-secret-key-16",
 		TokenExpiry:  time.Hour,
 		PasswordCost: 12,
 	})

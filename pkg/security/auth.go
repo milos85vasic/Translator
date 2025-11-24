@@ -25,6 +25,10 @@ type AuthService struct {
 
 // NewAuthService creates a new auth service
 func NewAuthService(jwtSecret string, tokenTTL time.Duration) *AuthService {
+	// Validate secret key
+	if len(jwtSecret) < 16 {
+		panic("JWT secret key must be at least 16 characters long")
+	}
 	return &AuthService{
 		jwtSecret: []byte(jwtSecret),
 		tokenTTL:  tokenTTL,
@@ -33,6 +37,17 @@ func NewAuthService(jwtSecret string, tokenTTL time.Duration) *AuthService {
 
 // GenerateToken generates a JWT token
 func (as *AuthService) GenerateToken(userID, username string, roles []string) (string, error) {
+	// Validate inputs
+	if userID == "" {
+		return "", errors.New("userID cannot be empty")
+	}
+	if username == "" {
+		return "", errors.New("username cannot be empty")
+	}
+	if as.tokenTTL <= 0 {
+		return "", errors.New("token TTL must be positive")
+	}
+
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
@@ -50,6 +65,13 @@ func (as *AuthService) GenerateToken(userID, username string, roles []string) (s
 
 // ValidateToken validates a JWT token
 func (as *AuthService) ValidateToken(tokenString string) (*Claims, error) {
+	// Validate input
+	if tokenString == "" {
+		return nil, errors.New("token cannot be empty")
+	}
+
+	start := time.Now()
+	
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("invalid signing method")
@@ -57,7 +79,13 @@ func (as *AuthService) ValidateToken(tokenString string) (*Claims, error) {
 		return as.jwtSecret, nil
 	})
 
+	// Add small artificial delay for invalid tokens to prevent brute force
 	if err != nil {
+		// Sleep at least 10 microseconds for security
+		elapsed := time.Since(start)
+		if elapsed < 10*time.Microsecond {
+			time.Sleep(10*time.Microsecond - elapsed)
+		}
 		return nil, err
 	}
 
@@ -66,6 +94,27 @@ func (as *AuthService) ValidateToken(tokenString string) (*Claims, error) {
 	}
 
 	return nil, errors.New("invalid token")
+}
+
+// RefreshToken generates a new token with extended expiration
+func (as *AuthService) RefreshToken(claims *Claims) (string, error) {
+	if claims == nil {
+		return "", errors.New("claims cannot be nil")
+	}
+
+	newClaims := Claims{
+		UserID:   claims.UserID,
+		Username: claims.Username,
+		Roles:    claims.Roles,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(as.tokenTTL)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, newClaims)
+	return token.SignedString(as.jwtSecret)
 }
 
 // GenerateAPIKey generates a random API key

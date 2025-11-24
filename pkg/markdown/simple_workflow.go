@@ -312,7 +312,7 @@ func createEPUBFromDirectory(sourceDir, outputPath string) error {
 		return fmt.Errorf("failed to write mimetype: %w", err)
 	}
 
-	// Walk the directory and add all files
+	// Walk the directory and add all other files
 	err = filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

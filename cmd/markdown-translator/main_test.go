@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -217,14 +218,14 @@ This is a paragraph with **bold** and *italic* text.
 
 ## Code Example
 
-```javascript
+` + "```" + `javascript
 function hello() {
     console.log("Hello, world!");
 }
-\`\`\`
 
-> This is a blockquote.
-`
+` + "```" + `
+
+> This is a blockquote.`
 		inputFile := filepath.Join(tempDir, "format.md")
 		err := os.WriteFile(inputFile, []byte(content), 0644)
 		if err != nil {

@@ -10,6 +10,7 @@ import (
 	"digital.vasic.translator/pkg/deployment"
 	"digital.vasic.translator/pkg/distributed"
 	"digital.vasic.translator/pkg/events"
+	"digital.vasic.translator/pkg/models"
 	"digital.vasic.translator/pkg/security"
 	"digital.vasic.translator/pkg/websocket"
 	"flag"
@@ -61,7 +62,8 @@ func main() {
 	// Initialize components
 	eventBus := events.NewEventBus()
 	translationCache := cache.NewCache(time.Duration(cfg.Translation.CacheTTL)*time.Second, cfg.Translation.CacheEnabled)
-	authService := security.NewAuthService(cfg.Security.JWTSecret, 24*time.Hour)
+	userRepo := models.NewInMemoryUserRepository()
+	authService := security.NewUserAuthService(cfg.Security.JWTSecret, 24*time.Hour, userRepo)
 	rateLimiter := security.NewRateLimiter(cfg.Security.RateLimitRPS, cfg.Security.RateLimitBurst)
 	wsHub := websocket.NewHub(eventBus)
 

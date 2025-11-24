@@ -266,7 +266,7 @@ func TestDatabaseMigration(t *testing.T) {
 
 			// Create down migration file
 			downFile := filepath.Join(tempDir, migration.version+"_down.sql")
-			err := os.WriteFile(downFile, []byte(migration.downSQL), 0644)
+			err = os.WriteFile(downFile, []byte(migration.downSQL), 0644)
 			if err != nil {
 				t.Fatalf("Failed to create down migration file: %v", err)
 			}

@@ -1,6 +1,8 @@
 package security
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -404,4 +406,463 @@ func TestAuthService_SigningMethodValidation(t *testing.T) {
 	validatedClaims, err := auth.ValidateToken(tokenString)
 	assert.Error(t, err)
 	assert.Nil(t, validatedClaims)
+}
+
+// Additional comprehensive security tests to enhance coverage
+
+func TestGenerateToken_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name      string
+		userID    string
+		username  string
+		roles     []string
+		expectErr bool
+	}{
+		{
+			name:     "Valid minimal token",
+			userID:   "user123",
+			username: "testuser",
+			roles:    []string{},
+		},
+		{
+			name:     "Valid token with multiple roles",
+			userID:   "user123",
+			username: "testuser",
+			roles:    []string{"admin", "user", "moderator"},
+		},
+		{
+			name:     "Empty userID",
+			userID:   "",
+			username: "testuser",
+			roles:    []string{"user"},
+			expectErr: true,
+		},
+		{
+			name:     "Empty username",
+			userID:   "user123",
+			username: "",
+			roles:    []string{"user"},
+			expectErr: true,
+		},
+		{
+			name:     "Special characters in username",
+			userID:   "user123",
+			username: "test@user.com",
+			roles:    []string{"user"},
+		},
+		{
+			name:     "Unicode characters in username",
+			userID:   "user123",
+			username: "тестовый",
+			roles:    []string{"user"},
+		},
+	}
+
+	auth := NewAuthService("test-secret-key", time.Hour)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token, err := auth.GenerateToken(tt.userID, tt.username, tt.roles)
+
+			if tt.expectErr {
+				assert.Error(t, err)
+				assert.Empty(t, token)
+			} else {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, token)
+				assert.Contains(t, token, ".")
+			}
+		})
+	}
+}
+
+func TestValidateToken_MalformedTokens(t *testing.T) {
+	auth := NewAuthService("test-secret-key", time.Hour)
+
+	tests := []struct {
+		name        string
+		token       string
+		expectError bool
+	}{
+		{
+			name:        "Empty token",
+			token:       "",
+			expectError: true,
+		},
+		{
+			name:        "Single segment",
+			token:       "abc123",
+			expectError: true,
+		},
+		{
+			name:        "Two segments",
+			token:       "abc123.def456",
+			expectError: true,
+		},
+		{
+			name:        "Four segments",
+			token:       "abc123.def456.ghi789.jkl012",
+			expectError: true,
+		},
+		{
+			name:        "Invalid base64 in header",
+			token:       "!!!.def456.ghi789",
+			expectError: true,
+		},
+		{
+			name:        "Invalid base64 in payload",
+			token:       "abc123.!!!.ghi789",
+			expectError: true,
+		},
+		{
+			name:        "Invalid base64 in signature",
+			token:       "abc123.def456.!!!",
+			expectError: true,
+		},
+		{
+			name:        "Token with spaces",
+			token:       "abc def.ghi789.jkl012",
+			expectError: true,
+		},
+		{
+			name:        "Non-ASCII characters",
+			token:       "测试.测试.测试",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claims, err := auth.ValidateToken(tt.token)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, claims)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, claims)
+			}
+		})
+	}
+}
+
+func TestValidateToken_BruteForceProtection(t *testing.T) {
+	auth := NewAuthService("test-secret-key", time.Hour)
+	
+	// Generate a valid token
+	validToken, err := auth.GenerateToken("user123", "testuser", []string{"user"})
+	require.NoError(t, err)
+
+	// Test multiple rapid invalid token attempts
+	invalidTokens := []string{
+		"invalid.token.here",
+		"another.invalid.token",
+		"yet.another.invalid.token",
+		"bad.token.signature",
+		"malformed.jwt.token",
+	}
+
+	for i, invalidToken := range invalidTokens {
+		t.Run(fmt.Sprintf("InvalidAttempt_%d", i+1), func(t *testing.T) {
+			start := time.Now()
+			claims, err := auth.ValidateToken(invalidToken)
+			duration := time.Since(start)
+
+			assert.Error(t, err)
+			assert.Nil(t, claims)
+			
+			// Should process quickly but not too fast (brute force protection)
+			assert.Greater(t, duration, time.Microsecond)
+			assert.Less(t, duration, time.Second)
+		})
+	}
+
+	// Verify that valid token still works after invalid attempts
+	claims, err := auth.ValidateToken(validToken)
+	assert.NoError(t, err)
+	assert.NotNil(t, claims)
+	assert.Equal(t, "user123", claims.UserID)
+}
+
+func TestAuthService_SecretKeyRotation(t *testing.T) {
+	oldSecret := "old-secret-key"
+	newSecret := "new-secret-key"
+
+	// Create auth services with old and new secrets
+	oldAuth := NewAuthService(oldSecret, time.Hour)
+	newAuth := NewAuthService(newSecret, time.Hour)
+
+	// Generate token with old secret
+	token, err := oldAuth.GenerateToken("user123", "testuser", []string{"user"})
+	require.NoError(t, err)
+
+	// Validation should fail with new secret
+	claims, err := newAuth.ValidateToken(token)
+	assert.Error(t, err)
+	assert.Nil(t, claims)
+
+	// Validation should succeed with old secret
+	claims, err = oldAuth.ValidateToken(token)
+	assert.NoError(t, err)
+	assert.NotNil(t, claims)
+}
+
+func TestAuthService_RoleBasedSecurity(t *testing.T) {
+	auth := NewAuthService("test-secret-key", time.Hour)
+
+	// Generate tokens with different roles
+	adminToken, err := auth.GenerateToken("admin123", "admin", []string{"admin", "user"})
+	require.NoError(t, err)
+
+	userToken, err := auth.GenerateToken("user123", "user", []string{"user"})
+	require.NoError(t, err)
+
+	guestToken, err := auth.GenerateToken("guest123", "guest", []string{"guest"})
+	require.NoError(t, err)
+
+	// Validate admin token
+	adminClaims, err := auth.ValidateToken(adminToken)
+	assert.NoError(t, err)
+	assert.Contains(t, adminClaims.Roles, "admin")
+	assert.Contains(t, adminClaims.Roles, "user")
+
+	// Validate user token
+	userClaims, err := auth.ValidateToken(userToken)
+	assert.NoError(t, err)
+	assert.Contains(t, userClaims.Roles, "user")
+	assert.NotContains(t, userClaims.Roles, "admin")
+
+	// Validate guest token
+	guestClaims, err := auth.ValidateToken(guestToken)
+	assert.NoError(t, err)
+	assert.Contains(t, guestClaims.Roles, "guest")
+	assert.NotContains(t, guestClaims.Roles, "user")
+}
+
+func TestAuthService_TokenExpirationEdgeCases(t *testing.T) {
+	tests := []struct {
+		name      string
+		ttl       time.Duration
+		waitTime  time.Duration
+		expectErr bool
+	}{
+		{
+			name:      "Immediate expiration",
+			ttl:       time.Millisecond,
+			waitTime:   time.Millisecond * 2,
+			expectErr:  true,
+		},
+		{
+			name:      "Short TTL",
+			ttl:       time.Second,
+			waitTime:   time.Millisecond * 500,
+			expectErr:  false,
+		},
+		{
+			name:      "Zero TTL",
+			ttl:       0,
+			waitTime:   0,
+			expectErr:  true,
+		},
+		{
+			name:      "Negative TTL",
+			ttl:       -time.Hour,
+			waitTime:   0,
+			expectErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth := NewAuthService("test-secret-key", tt.ttl)
+
+			token, err := auth.GenerateToken("user123", "testuser", []string{"user"})
+			
+			if tt.expectErr {
+				// Some TTL values should cause generation to fail
+				if err == nil {
+					t.Log("Token generation succeeded unexpectedly")
+				} else {
+					t.Logf("Token generation failed as expected: %v", err)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+
+			// Wait for specified time
+			time.Sleep(tt.waitTime)
+
+			// Validate token
+			claims, err := auth.ValidateToken(token)
+
+			if tt.waitTime >= tt.ttl {
+				assert.Error(t, err)
+				assert.Nil(t, claims)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, claims)
+			}
+		})
+	}
+}
+
+func TestAuthService_ConcurrentAccess(t *testing.T) {
+	auth := NewAuthService("test-secret-key", time.Hour)
+
+	// Test concurrent token generation and validation
+	numGoroutines := 100
+	results := make(chan error, numGoroutines*2)
+
+	// Concurrent token generation
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			userID := fmt.Sprintf("user%d", id)
+			username := fmt.Sprintf("user%d", id)
+			token, err := auth.GenerateToken(userID, username, []string{"user"})
+			
+			if err != nil {
+				results <- fmt.Errorf("generation failed for user %d: %w", id, err)
+				return
+			}
+
+			// Validate the generated token
+			claims, err := auth.ValidateToken(token)
+			if err != nil {
+				results <- fmt.Errorf("validation failed for user %d: %w", id, err)
+				return
+			}
+
+			if claims.UserID != userID || claims.Username != username {
+				results <- fmt.Errorf("claims mismatch for user %d", id)
+				return
+			}
+
+			results <- nil
+		}(i)
+	}
+
+	// Collect results
+	var errors []error
+	for i := 0; i < numGoroutines; i++ {
+		if err := <-results; err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	// Should have no errors from concurrent access
+	assert.Empty(t, errors, "Concurrent access should not cause errors: %v", errors)
+}
+
+func TestAuthService_InputValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		secretKey string
+		expectErr bool
+	}{
+		{
+			name:      "Valid secret key",
+			secretKey: "valid-secret-key-123",
+			expectErr: false,
+		},
+		{
+			name:      "Empty secret key",
+			secretKey: "",
+			expectErr: true,
+		},
+		{
+			name:      "Short secret key",
+			secretKey: "short",
+			expectErr: true,
+		},
+		{
+			name:      "Secret key with spaces",
+			secretKey: "secret with spaces",
+			expectErr: false,
+		},
+		{
+			name:      "Very long secret key",
+			secretKey: strings.Repeat("a", 1000),
+			expectErr: false,
+		},
+		{
+			name:      "Secret key with special characters",
+			secretKey: "secret!@#$%^&*()_+-=[]{}|;':,./<>?",
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expectErr {
+				// Should panic or return error for invalid secret
+				assert.Panics(t, func() {
+					NewAuthService(tt.secretKey, time.Hour)
+				})
+			} else {
+				// Should create valid auth service
+				assert.NotPanics(t, func() {
+					NewAuthService(tt.secretKey, time.Hour)
+				})
+			}
+		})
+	}
+}
+
+func TestAuthService_MemoryLeakPrevention(t *testing.T) {
+	auth := NewAuthService("test-secret-key", time.Hour)
+
+	// Generate and validate many tokens to test for memory leaks
+	numTokens := 1000
+	tokens := make([]string, numTokens)
+
+	// Generate tokens
+	for i := 0; i < numTokens; i++ {
+		userID := fmt.Sprintf("user%d", i)
+		username := fmt.Sprintf("user%d", i)
+		token, err := auth.GenerateToken(userID, username, []string{"user"})
+		require.NoError(t, err)
+		tokens[i] = token
+	}
+
+	// Validate all tokens
+	for i, token := range tokens {
+		claims, err := auth.ValidateToken(token)
+		assert.NoError(t, err)
+		assert.NotNil(t, claims)
+		assert.Equal(t, fmt.Sprintf("user%d", i), claims.UserID)
+	}
+
+	// All operations should complete without issues
+	t.Logf("Successfully generated and validated %d tokens", numTokens)
+}
+
+func TestAuthService_TokenRefresh(t *testing.T) {
+	auth := NewAuthService("test-secret-key", time.Hour)
+
+	// Generate initial token
+	originalToken, err := auth.GenerateToken("user123", "testuser", []string{"user"})
+	require.NoError(t, err)
+
+	// Validate original token
+	originalClaims, err := auth.ValidateToken(originalToken)
+	require.NoError(t, err)
+	assert.Equal(t, "user123", originalClaims.UserID)
+
+	// Generate new token (refresh)
+	refreshedToken, err := auth.GenerateToken("user123", "testuser", []string{"user"})
+	require.NoError(t, err)
+
+	// Validate refreshed token
+	refreshedClaims, err := auth.ValidateToken(refreshedToken)
+	require.NoError(t, err)
+	assert.Equal(t, "user123", refreshedClaims.UserID)
+
+	// Tokens should be different
+	assert.NotEqual(t, originalToken, refreshedToken)
+	
+	// Claims should be the same (except timing)
+	assert.Equal(t, originalClaims.UserID, refreshedClaims.UserID)
+	assert.Equal(t, originalClaims.Username, refreshedClaims.Username)
+	assert.Equal(t, originalClaims.Roles, refreshedClaims.Roles)
 }

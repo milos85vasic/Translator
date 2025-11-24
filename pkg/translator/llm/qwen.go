@@ -259,7 +259,7 @@ func (c *QwenClient) refreshToken() error {
 	}
 
 	// Save updated token to file
-	if err := c.saveOAuthToken(); err != nil {
+	if err := c.saveOAuthToken(c.oauthToken); err != nil {
 		return fmt.Errorf("failed to save refreshed token: %w", err)
 	}
 

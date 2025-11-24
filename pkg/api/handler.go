@@ -29,6 +29,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	gorillaws "github.com/gorilla/websocket"
+	"errors"
 )
 
 // Handler handles API requests
@@ -46,7 +47,7 @@ func NewHandler(
 	cfg *config.Config,
 	eventBus *events.EventBus,
 	cache *cache.Cache,
-	authService *security.AuthService,
+	authService *security.UserAuthService,
 	wsHub *websocket.Hub,
 	distributedManager interface{},
 ) *Handler {

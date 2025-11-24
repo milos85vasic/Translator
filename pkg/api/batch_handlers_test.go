@@ -14,6 +14,7 @@ import (
 	"digital.vasic.translator/internal/cache"
 	"digital.vasic.translator/internal/config"
 	"digital.vasic.translator/pkg/events"
+	"digital.vasic.translator/pkg/models"
 	"digital.vasic.translator/pkg/security"
 	"digital.vasic.translator/pkg/websocket"
 
@@ -62,7 +63,8 @@ func setupTestRouter() (*gin.Engine, *Handler) {
 
 	eventBus := events.NewEventBus()
 	cache := cache.NewCache(time.Hour, true)
-	authService := security.NewAuthService("test-secret", time.Hour)
+	userRepo := &models.InMemoryUserRepository{}
+	authService := security.NewUserAuthService("test-secret", time.Hour, userRepo)
 	wsHub := websocket.NewHub(eventBus)
 
 	handler := NewHandler(cfg, eventBus, cache, authService, wsHub, nil)
@@ -704,7 +706,8 @@ func TestConfigurationValidation(t *testing.T) {
 
 	eventBus := events.NewEventBus()
 	cache := cache.NewCache(time.Hour, true)
-	authService := security.NewAuthService("test-secret", time.Hour)
+	userRepo := &models.InMemoryUserRepository{}
+	authService := security.NewUserAuthService("test-secret", time.Hour, userRepo)
 	wsHub := websocket.NewHub(eventBus)
 
 	handler := NewHandler(cfg, eventBus, cache, authService, wsHub, nil)

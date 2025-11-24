@@ -291,10 +291,15 @@ func TestLanguageDetection(t *testing.T) {
 				content := tc.content
 				detected := "en" // default
 				
-				if strings.ContainsAny(content, "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ") {
-					detected = "ru"
-				} else if strings.ContainsAny(content, "ћђчџшђжЋЂЧЏШЂЖ") {
+				// Check for Serbian-specific characters first (more specific)
+				if strings.ContainsAny(content, "ћђЋЂ") {
+					// These characters are unique to Serbian
 					detected = "sr"
+				} else if strings.ContainsAny(content, "чџшђжЧЏШЂЖ") && !strings.ContainsAny(content, "ъыьэюяЪЫЬЭЮЯ") {
+					// Shared characters but without Russian-specific ones
+					detected = "sr"
+				} else if strings.ContainsAny(content, "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ") {
+					detected = "ru"
 				}
 
 				if detected != tc.expected {

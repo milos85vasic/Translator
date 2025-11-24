@@ -73,9 +73,24 @@ func (r *InMemoryUserRepository) Create(user *User) error {
 
 // Update updates a user
 func (r *InMemoryUserRepository) Update(user *User) error {
-	if _, exists := r.users[user.Username]; !exists {
+	// Find user by ID or old username
+	var oldUsername string
+	for username, u := range r.users {
+		if u.ID == user.ID {
+			oldUsername = username
+			break
+		}
+	}
+	
+	if oldUsername == "" {
 		return ErrUserNotFound
 	}
+	
+	// If username changed, delete old entry and create new one
+	if oldUsername != user.Username {
+		delete(r.users, oldUsername)
+	}
+	
 	user.UpdatedAt = time.Now()
 	r.users[user.Username] = user
 	return nil

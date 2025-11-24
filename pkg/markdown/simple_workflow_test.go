@@ -2,13 +2,14 @@ package markdown
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"digital.vasic.translator/pkg/logger"
-	"digital.vasic.translator/pkg/translator/llm"
 )
 
 func TestSimpleWorkflow_NewSimpleWorkflow(t *testing.T) {
@@ -18,7 +19,7 @@ func TestSimpleWorkflow_NewSimpleWorkflow(t *testing.T) {
 		MaxConcurrency: 4,
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "info"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "info"})
 	callback := func(current, total int, message string) {}
 
 	workflow := NewSimpleWorkflow(config, testLogger, callback)
@@ -120,7 +121,7 @@ func TestSimpleWorkflow_ConvertToMarkdown(t *testing.T) {
 		MaxConcurrency: 2,
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "info"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "info"})
 	workflow := NewSimpleWorkflow(config, testLogger, nil)
 
 	// Test conversion
@@ -214,7 +215,7 @@ This document contains various elements that should be translated.
 		progressCount++
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "info"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "info"})
 	workflow := NewSimpleWorkflow(config, testLogger, callback)
 
 	// Test translation
@@ -296,12 +297,12 @@ Some subsection content.
 		MaxConcurrency: 2,
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "info"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "info"})
 	workflow := NewSimpleWorkflow(config, testLogger, nil)
 
 	// Test conversion
 	ctx := context.Background()
-	err = workflow.ConvertToEbook(ctx, inputPath, outputPath, "epub")
+	err = workflow.ConvertFromMarkdown(ctx, inputPath, outputPath)
 	if err != nil {
 		t.Fatalf("Failed to convert to ebook: %v", err)
 	}
@@ -433,7 +434,7 @@ func TestSimpleWorkflow_EndToEndWorkflow(t *testing.T) {
 		progressSteps++
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "info"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "info"})
 	workflow := NewSimpleWorkflow(config, testLogger, callback)
 
 	ctx := context.Background()
@@ -461,7 +462,7 @@ func TestSimpleWorkflow_EndToEndWorkflow(t *testing.T) {
 	}
 
 	// Step 3: Convert Markdown back to EPUB
-	err = workflow.ConvertToEbook(ctx, translatedPath, outputPath, "epub")
+	err = workflow.ConvertFromMarkdown(ctx, translatedPath, outputPath)
 	if err != nil {
 		t.Fatalf("Failed to convert markdown to EPUB: %v", err)
 	}
@@ -502,7 +503,7 @@ func TestSimpleWorkflow_ErrorHandling(t *testing.T) {
 		MaxConcurrency: 2,
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "info"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "info"})
 	workflow := NewSimpleWorkflow(config, testLogger, nil)
 
 	ctx := context.Background()
@@ -520,7 +521,7 @@ func TestSimpleWorkflow_ErrorHandling(t *testing.T) {
 	}
 
 	// Test ebook conversion with non-existent input file
-	err = workflow.ConvertToEbook(ctx, "/nonexistent/input.md", "/tmp/output.epub", "epub")
+	err = workflow.ConvertFromMarkdown(ctx, "/nonexistent/input.md", "/tmp/output.epub")
 	if err == nil {
 		t.Error("Expected error when converting non-existent file to ebook")
 	}
@@ -570,7 +571,7 @@ This document contains multiple paragraphs.
 		LLMProvider:      mockLLM,
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "info"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "info"})
 	workflow := NewSimpleWorkflow(config, testLogger, nil)
 
 	// Create context that gets cancelled quickly
@@ -635,7 +636,7 @@ func BenchmarkSimpleWorkflow_ConvertToMarkdown(b *testing.B) {
 		MaxConcurrency: 4,
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "error"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "error"})
 	workflow := NewSimpleWorkflow(config, testLogger, nil)
 
 	ctx := context.Background()
@@ -684,7 +685,7 @@ This document contains multiple paragraphs for benchmarking.
 		LLMProvider:      mockLLM,
 	}
 
-	testLogger := logger.NewLogger(logger.Config{Level: "error"})
+	testLogger := logger.NewLogger(logger.LoggerConfig{Level: "error"})
 	workflow := NewSimpleWorkflow(config, testLogger, nil)
 
 	ctx := context.Background()

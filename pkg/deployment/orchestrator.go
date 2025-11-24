@@ -82,7 +82,13 @@ type HealthCheckConfig struct {
 func NewDeploymentOrchestrator(cfg *config.Config, eventBus *events.EventBus) *DeploymentOrchestrator {
 	logger := log.New(os.Stdout, "[DEPLOYMENT] ", log.LstdFlags)
 
-	deployer := NewSSHDeployer(logger)
+	deployerConfig := &SSHDeployConfig{
+		Host:     "localhost",
+		Port:     22,
+		Username: "root",
+		Timeout:  30 * time.Second,
+	}
+	deployer := NewSSHDeployer(deployerConfig)
 	discoverer := NewNetworkDiscoverer(cfg, logger)
 
 	// Initialize API communication logger
@@ -301,7 +307,8 @@ func (do *DeploymentOrchestrator) waitForSystemHealth(ctx context.Context, plan 
 
 // checkInstanceHealth performs health check on a deployed instance
 func (do *DeploymentOrchestrator) checkInstanceHealth(ctx context.Context, instance *DeployedInstance) (bool, error) {
-	return do.deployer.CheckInstanceHealth(ctx, instance.Host, instance.Port)
+	err := do.deployer.CheckInstanceHealth(ctx, instance.ID)
+	return err == nil, err
 }
 
 // initializeNetworkDiscovery initializes network discovery and broadcasting
@@ -420,14 +427,14 @@ func (do *DeploymentOrchestrator) UpdateService(ctx context.Context, serviceName
 	instance.Config.DockerImage = newImage
 
 	// Redeploy the instance
-	containerID, err := do.deployer.UpdateInstance(ctx, instance.Config)
+	err := do.deployer.UpdateInstance(ctx, instance.ID, instance.Config)
 	if err != nil {
 		return fmt.Errorf("failed to update service %s: %w", serviceName, err)
 	}
 
 	// Update instance information
 	instance.mu.Lock()
-	instance.ContainerID = containerID
+	instance.ContainerID = instance.ID // Use instance ID as container ID
 	instance.Status = "updating"
 	instance.LastSeen = time.Now()
 	instance.mu.Unlock()
@@ -449,7 +456,7 @@ func (do *DeploymentOrchestrator) UpdateService(ctx context.Context, serviceName
 		Data: map[string]interface{}{
 			"service":      serviceName,
 			"image":        newImage,
-			"container_id": containerID,
+			"container_id": instance.ID,
 		},
 	})
 
@@ -497,7 +504,7 @@ func (do *DeploymentOrchestrator) RestartService(ctx context.Context, serviceNam
 	}
 
 	// Restart the instance
-	if err := do.deployer.RestartInstance(ctx, instance.Config); err != nil {
+	if err := do.deployer.RestartInstance(ctx, instance.ID); err != nil {
 		return fmt.Errorf("failed to restart service %s: %w", serviceName, err)
 	}
 

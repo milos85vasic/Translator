@@ -1,7 +1,6 @@
 package deployment
 
 import (
-	"fmt"
 	"time"
 )
 

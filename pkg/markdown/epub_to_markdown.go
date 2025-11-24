@@ -44,7 +44,15 @@ func (c *EPUBToMarkdownConverter) ConvertEPUBToMarkdown(epubPath, outputMDPath s
 	parser := ebook.NewUniversalParser()
 	book, err := parser.Parse(epubPath)
 	if err != nil {
-		return fmt.Errorf("failed to parse EPUB: %w", err)
+		// If format detection fails (e.g., detects as AZW3 but it's actually EPUB),
+		// try parsing directly as EPUB
+		if strings.Contains(err.Error(), "azw3") {
+			epubParser := ebook.NewEPUBParser()
+			book, err = epubParser.Parse(epubPath)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to parse EPUB: %w", err)
+		}
 	}
 	metadata := book.Metadata
 
@@ -61,9 +69,13 @@ func (c *EPUBToMarkdownConverter) ConvertEPUBToMarkdown(epubPath, outputMDPath s
 		return fmt.Errorf("failed to parse EPUB structure: %w", err)
 	}
 	
-	// Use metadata from parseEPUBStructure as it might have cover info
+	// Merge metadata from parseEPUBStructure but preserve cover from UniversalParser
 	if parsedMetadata != nil {
+		originalCover := metadata.Cover // Preserve cover from UniversalParser
 		metadata = *parsedMetadata
+		if len(originalCover) > 0 {
+			metadata.Cover = originalCover // Use cover from UniversalParser if it has one
+		}
 	}
 
 	// Extract cover image if present

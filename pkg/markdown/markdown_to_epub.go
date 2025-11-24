@@ -216,15 +216,70 @@ func (c *MarkdownToEPUBConverter) parseFrontmatterLine(line string, metadata *eb
 
 // createEPUB creates an EPUB file from chapters using the enhanced EPUBWriter
 func (c *MarkdownToEPUBConverter) createEPUB(chapters []ebook.Chapter, outputPath string) error {
-	// Create Book structure with all metadata
-	book := &ebook.Book{
-		Metadata: c.metadata,
-		Chapters: chapters,
+	// Create the EPUB file directly
+	epubFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create EPUB file: %w", err)
+	}
+	defer epubFile.Close()
+
+	zipWriter := zip.NewWriter(epubFile)
+	defer zipWriter.Close()
+
+	// Add mimetype (must be uncompressed and first)
+	mimeTypeWriter, err := zipWriter.CreateHeader(&zip.FileHeader{
+		Name:   "mimetype",
+		Method: zip.Store, // No compression
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create mimetype entry: %w", err)
+	}
+	
+	if _, err := mimeTypeWriter.Write([]byte("application/epub+zip")); err != nil {
+		return fmt.Errorf("failed to write mimetype: %w", err)
 	}
 
-	// Use the enhanced EPUBWriter which handles all metadata properly
-	writer := ebook.NewEPUBWriter()
-	return writer.Write(book, outputPath)
+	// Write META-INF/container.xml
+	if err := c.writeContainer(zipWriter); err != nil {
+		return fmt.Errorf("failed to write container.xml: %w", err)
+	}
+
+	// Write OEBPS/content.opf
+	if err := c.writeContentOPF(zipWriter, chapters); err != nil {
+		return fmt.Errorf("failed to write content.opf: %w", err)
+	}
+
+	// Write OEBPS/toc.ncx
+	if err := c.writeTOC(zipWriter, chapters); err != nil {
+		return fmt.Errorf("failed to write toc.ncx: %w", err)
+	}
+
+	// Write chapter files
+	for i, chapter := range chapters {
+		chapterNum := i + 1
+		chapterPath := fmt.Sprintf("OEBPS/chapter%d.xhtml", chapterNum)
+		writer, err := zipWriter.Create(chapterPath)
+		if err != nil {
+			return fmt.Errorf("failed to create chapter file: %w", err)
+		}
+
+		// Extract content from chapter sections
+		var content strings.Builder
+		for _, section := range chapter.Sections {
+			if section.Content != "" {
+				content.WriteString(section.Content)
+				content.WriteString("\n\n")
+			}
+		}
+		
+		// Convert chapter content to valid XHTML
+		xhtml := c.convertMarkdownToXHTML(content.String())
+		if _, err := writer.Write([]byte(xhtml)); err != nil {
+			return fmt.Errorf("failed to write chapter content: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // writeContainer writes META-INF/container.xml
@@ -521,4 +576,67 @@ func (c *MarkdownToEPUBConverter) escapeXML(s string) string {
 	s = strings.ReplaceAll(s, "\"", "&quot;")
 	s = strings.ReplaceAll(s, "'", "&apos;")
 	return s
+}
+
+// convertMarkdownToXHTML converts markdown content to XHTML
+func (c *MarkdownToEPUBConverter) convertMarkdownToXHTML(markdown string) string {
+	lines := strings.Split(markdown, "\n")
+	var result strings.Builder
+	inParagraph := false
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		
+		// Headers
+		if strings.HasPrefix(line, "# ") {
+			if inParagraph {
+				result.WriteString("</p>\n")
+				inParagraph = false
+			}
+			result.WriteString(fmt.Sprintf("<h1>%s</h1>\n", strings.TrimPrefix(line, "# ")))
+		} else if strings.HasPrefix(line, "## ") {
+			if inParagraph {
+				result.WriteString("</p>\n")
+				inParagraph = false
+			}
+			result.WriteString(fmt.Sprintf("<h2>%s</h2>\n", strings.TrimPrefix(line, "## ")))
+		} else if strings.HasPrefix(line, "### ") {
+			if inParagraph {
+				result.WriteString("</p>\n")
+				inParagraph = false
+			}
+			result.WriteString(fmt.Sprintf("<h3>%s</h3>\n", strings.TrimPrefix(line, "### ")))
+		} else if line == "" {
+			// Empty line - close paragraph if open
+			if inParagraph {
+				result.WriteString("</p>\n")
+				inParagraph = false
+			}
+		} else {
+			// Regular text - start or continue paragraph
+			if !inParagraph {
+				result.WriteString("<p>")
+				inParagraph = true
+			} else {
+				result.WriteString(" ")
+			}
+			result.WriteString(c.convertInlineMarkdown(line))
+		}
+	}
+
+	// Close any open paragraph
+	if inParagraph {
+		result.WriteString("</p>\n")
+	}
+
+	// Wrap in XHTML document structure
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>%s</title>
+</head>
+<body>
+%s</body>
+</html>`, c.metadata.Title, result.String())
 }

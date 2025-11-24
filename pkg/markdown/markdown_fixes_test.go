@@ -1,7 +1,9 @@
 package markdown
 
 import (
+	"archive/zip"
 	"digital.vasic.translator/pkg/ebook"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -258,6 +260,186 @@ func TestEscapingOrder(t *testing.T) {
 	}
 }
 
+// createTestEPUB creates a test EPUB file from a Book structure
+func createTestEPUB(book *ebook.Book, outputPath string) error {
+	// Create the EPUB file
+	epubFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create EPUB file: %w", err)
+	}
+	defer epubFile.Close()
+
+	zipWriter := zip.NewWriter(epubFile)
+	defer zipWriter.Close()
+
+	// Add mimetype (must be uncompressed and first)
+	mimeTypeWriter, err := zipWriter.CreateHeader(&zip.FileHeader{
+		Name:   "mimetype",
+		Method: zip.Store, // No compression
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create mimetype entry: %w", err)
+	}
+	
+	if _, err := mimeTypeWriter.Write([]byte("application/epub+zip")); err != nil {
+		return fmt.Errorf("failed to write mimetype: %w", err)
+	}
+
+	// Write META-INF/container.xml
+	if err := writeContainerXML(zipWriter); err != nil {
+		return fmt.Errorf("failed to write container.xml: %w", err)
+	}
+
+	// Write OEBPS/content.opf
+	if err := writeContentOPF(zipWriter, book); err != nil {
+		return fmt.Errorf("failed to write content.opf: %w", err)
+	}
+
+	// Write OEBPS/toc.ncx
+	if err := writeTOC(zipWriter, book); err != nil {
+		return fmt.Errorf("failed to write toc.ncx: %w", err)
+	}
+
+	// Write chapter files
+	for i, chapter := range book.Chapters {
+		chapterNum := i + 1
+		chapterPath := fmt.Sprintf("OEBPS/chapter%d.xhtml", chapterNum)
+		writer, err := zipWriter.Create(chapterPath)
+		if err != nil {
+			return fmt.Errorf("failed to create chapter file: %w", err)
+		}
+
+		// Extract content from chapter sections
+		var content strings.Builder
+		for _, section := range chapter.Sections {
+			if section.Content != "" {
+				content.WriteString(section.Content)
+				content.WriteString("\n\n")
+			}
+		}
+		
+		// Convert chapter content to valid XHTML
+		xhtml := convertMarkdownToXHTML(content.String())
+		if _, err := writer.Write([]byte(xhtml)); err != nil {
+			return fmt.Errorf("failed to write chapter content: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// writeContainerXML writes META-INF/container.xml
+func writeContainerXML(zw *zip.Writer) error {
+	writer, err := zw.Create("META-INF/container.xml")
+	if err != nil {
+		return err
+	}
+
+	container := `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`
+	
+	_, err = writer.Write([]byte(container))
+	return err
+}
+
+// writeContentOPF writes OEBPS/content.opf
+func writeContentOPF(zw *zip.Writer, book *ebook.Book) error {
+	writer, err := zw.Create("OEBPS/content.opf")
+	if err != nil {
+		return err
+	}
+
+	var opf strings.Builder
+	opf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="BookID">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+`)
+	
+	// Metadata
+	opf.WriteString(fmt.Sprintf("    <dc:title>%s</dc:title>\n", escapeXML(book.Metadata.Title)))
+	for _, author := range book.Metadata.Authors {
+		opf.WriteString(fmt.Sprintf("    <dc:creator>%s</dc:creator>\n", escapeXML(author)))
+	}
+	opf.WriteString(fmt.Sprintf("    <dc:language>%s</dc:language>\n", escapeXML(book.Metadata.Language)))
+	opf.WriteString("    <dc:identifier id=\"BookID\">urn:uuid:generated</dc:identifier>\n")
+	opf.WriteString("  </metadata>\n")
+
+	// Manifest
+	opf.WriteString("  <manifest>\n")
+	opf.WriteString("    <item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/>\n")
+	for i := 1; i <= len(book.Chapters); i++ {
+		opf.WriteString(fmt.Sprintf("    <item id=\"chapter%d\" href=\"chapter%d.xhtml\" media-type=\"application/xhtml+xml\"/>\n", i, i))
+	}
+	opf.WriteString("  </manifest>\n")
+
+	// Spine
+	opf.WriteString("  <spine toc=\"ncx\">\n")
+	for i := 1; i <= len(book.Chapters); i++ {
+		opf.WriteString(fmt.Sprintf("    <itemref idref=\"chapter%d\"/>\n", i))
+	}
+	opf.WriteString("  </spine>\n")
+	opf.WriteString("</package>")
+	
+	_, err = writer.Write([]byte(opf.String()))
+	return err
+}
+
+// writeTOC writes OEBPS/toc.ncx
+func writeTOC(zw *zip.Writer, book *ebook.Book) error {
+	writer, err := zw.Create("OEBPS/toc.ncx")
+	if err != nil {
+		return err
+	}
+
+	var ncx strings.Builder
+	ncx.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="urn:uuid:generated"/>
+    <meta name="dtb:depth" content="1"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle>
+    <text>`)
+	ncx.WriteString(escapeXML(book.Metadata.Title))
+	ncx.WriteString(`</text>
+  </docTitle>
+  <navMap>
+`)
+	
+	for i, chapter := range book.Chapters {
+		playOrder := i + 1
+		ncx.WriteString(fmt.Sprintf("    <navPoint id=\"navPoint-%d\" playOrder=\"%d\">\n", playOrder, playOrder))
+		ncx.WriteString("      <navLabel>\n")
+		ncx.WriteString(fmt.Sprintf("        <text>%s</text>\n", escapeXML(chapter.Title)))
+		ncx.WriteString("      </navLabel>\n")
+		ncx.WriteString(fmt.Sprintf("      <content src=\"chapter%d.xhtml\"/>\n", playOrder))
+		ncx.WriteString("    </navPoint>\n")
+	}
+	
+	ncx.WriteString(`  </navMap>
+</ncx>`)
+	
+	_, err = writer.Write([]byte(ncx.String()))
+	return err
+}
+
+// escapeXML escapes special XML characters
+func escapeXML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&apos;")
+	return s
+}
+
 // TestCompleteWorkflowWithFixes tests the complete EPUB→MD→EPUB workflow with fixes applied
 func TestCompleteWorkflowWithFixes(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -289,8 +471,7 @@ func TestCompleteWorkflowWithFixes(t *testing.T) {
 
 	// Step 1: Write source EPUB
 	sourceEPUB := tmpDir + "/source.epub"
-	writer := ebook.NewEPUBWriter()
-	if err := writer.Write(sourceBook, sourceEPUB); err != nil {
+	if err := createTestEPUB(sourceBook, sourceEPUB); err != nil {
 		t.Fatalf("Failed to write source EPUB: %v", err)
 	}
 

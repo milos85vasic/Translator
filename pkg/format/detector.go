@@ -150,10 +150,15 @@ func (d *Detector) disambiguateZipFormat(filename string, ext string) (Format, e
 		}
 	}
 
-	// Check for AZW3 specific structure
+	// Check for AZW3 specific structure ONLY if no specific mimetype found
+	// This prevents EPUBs with application/epub+zip from being misidentified
 	if d.isAZW3File(filename) {
 		return FormatAZW3, nil
 	}
+	
+	// Debug: Let's see what's happening
+	// For ZIP files with PK magic but no specific AZW3 indicators, treat as EPUB
+	// This catches cases where EPUB files are being incorrectly detected as AZW3
 
 	// Default to EPUB for unknown ZIP formats
 	return FormatEPUB, nil

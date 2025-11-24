@@ -3,6 +3,7 @@ package markdown
 import (
 	"archive/zip"
 	"digital.vasic.translator/pkg/ebook"
+	"digital.vasic.translator/pkg/format"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -42,6 +43,7 @@ func (c *EPUBToMarkdownConverter) ConvertEPUBToMarkdown(epubPath, outputMDPath s
 
 	// Parse EPUB using universal parser to get metadata including cover
 	parser := ebook.NewUniversalParser()
+	
 	book, err := parser.Parse(epubPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse EPUB: %w", err)

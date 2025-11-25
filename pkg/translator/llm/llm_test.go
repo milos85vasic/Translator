@@ -1264,50 +1264,35 @@ func TestNewLLMTranslatorWithConfigErrorPaths(t *testing.T) {
 		}
 	})
 	
-	t.Run("ollama_custom_model_warning", func(t *testing.T) {
-		// Temporarily remove models from ValidModels to test warning
-		originalOllamaModels := ValidModels[ProviderOllama]
-		ValidModels[ProviderOllama] = []string{} // Empty the list
-		
+	t.Run("ollama_valid_model", func(t *testing.T) {
 		config := TranslationConfig{
 			Provider: "ollama",
-			Model:    "custom-model-not-in-list",
+			Model:    "llama2", // Valid model in the list
 		}
 		
-		// This should succeed but emit a warning
 		translator, err := NewLLMTranslatorWithConfig(config)
 		if err != nil {
-			t.Logf("Expected success with custom Ollama model, got error: %v", err)
+			t.Errorf("Expected success with valid Ollama model, got error: %v", err)
 		}
-		if translator != nil {
-			t.Logf("Successfully created translator with custom Ollama model")
+		if translator == nil {
+			t.Error("Translator should not be nil with valid config")
 		}
-		
-		// Restore original models
-		ValidModels[ProviderOllama] = originalOllamaModels
 	})
 	
-	t.Run("llamacpp_custom_model_warning", func(t *testing.T) {
-		// Temporarily remove models from ValidModels to test warning
-		originalLlamaCppModels := ValidModels[ProviderLlamaCpp]
-		ValidModels[ProviderLlamaCpp] = []string{} // Empty the list
-		
+	t.Run("llamacpp_valid_model", func(t *testing.T) {
 		config := TranslationConfig{
 			Provider: "llamacpp",
-			Model:    "custom-model-not-in-list",
+			Model:    "llama2", // Valid model in the list
 		}
 		
-		// This should succeed but emit a warning
 		translator, err := NewLLMTranslatorWithConfig(config)
+		// This might fail if llama2 model doesn't exist locally, but that's expected
 		if err != nil {
-			t.Logf("Expected success with custom LlamaCpp model, got error: %v", err)
+			t.Logf("Expected potential failure with LlamaCpp model (may not exist locally): %v", err)
 		}
 		if translator != nil {
-			t.Logf("Successfully created translator with custom LlamaCpp model")
+			t.Logf("Successfully created translator with LlamaCpp model")
 		}
-		
-		// Restore original models
-		ValidModels[ProviderLlamaCpp] = originalLlamaCppModels
 	})
 }
 

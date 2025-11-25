@@ -2,6 +2,8 @@ package llm
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -367,6 +369,127 @@ func TestGeminiParseResponseErrorPaths(t *testing.T) {
 		expected := "First candidate"
 		if result != expected {
 			t.Errorf("Expected first candidate '%s', got: '%s'", expected, result)
+		}
+	})
+}
+
+// TestGeminiMakeRequestAdditionalPaths tests uncovered paths in makeRequest
+func TestGeminiMakeRequestAdditionalPaths(t *testing.T) {
+	client := &GeminiClient{
+		baseURL: "https://generativelanguage.googleapis.com/v1beta",
+		config: TranslationConfig{
+			Provider: "gemini",
+			APIKey:   "test-api-key",
+			Model:    "gemini-pro",
+		},
+		httpClient: &http.Client{},
+	}
+
+	ctx := context.Background()
+	req := GeminiRequest{
+		Contents: []GeminiContent{
+			{
+				Parts: []GeminiPart{
+					{Text: "Test content"},
+				},
+			},
+		},
+	}
+
+	t.Run("cancelled_context", func(t *testing.T) {
+		// Create a context that's already cancelled
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		_, err := client.makeRequest(ctx, req)
+		if err != nil {
+			t.Logf("Expected error with cancelled context: %v", err)
+		} else {
+			t.Error("Expected error with cancelled context")
+		}
+	})
+
+	t.Run("malformed_json_response", func(t *testing.T) {
+		// Create a mock server that returns invalid JSON
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("{invalid json response"))
+		}))
+		defer server.Close()
+
+		// Update client baseURL to use the test server
+		originalURL := client.baseURL
+		client.baseURL = server.URL
+
+		defer func() {
+			client.baseURL = originalURL
+		}()
+
+		_, err := client.makeRequest(ctx, req)
+		if err != nil {
+			t.Logf("Expected error with malformed JSON: %v", err)
+			if !strings.Contains(err.Error(), "failed to unmarshal response") {
+				t.Errorf("Error should mention unmarshaling: %v", err)
+			}
+		} else {
+			t.Error("Expected error with malformed JSON")
+		}
+	})
+
+	t.Run("empty_candidates_in_response", func(t *testing.T) {
+		// Create a mock server that returns empty candidates
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"candidates": []}`))
+		}))
+		defer server.Close()
+
+		// Update client baseURL to use the test server
+		originalURL := client.baseURL
+		client.baseURL = server.URL
+
+		defer func() {
+			client.baseURL = originalURL
+		}()
+
+		_, err := client.makeRequest(ctx, req)
+		if err != nil {
+			t.Logf("Expected error with empty candidates: %v", err)
+			if !strings.Contains(err.Error(), "no candidates") {
+				t.Errorf("Error should mention no candidates: %v", err)
+			}
+		} else {
+			t.Error("Expected error with empty candidates")
+		}
+	})
+
+	t.Run("error_status_response", func(t *testing.T) {
+		// Create a mock server that returns error status
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error": {"message": "Invalid request"}}`))
+		}))
+		defer server.Close()
+
+		// Update client baseURL to use test server
+		originalURL := client.baseURL
+		client.baseURL = server.URL
+
+		defer func() {
+			client.baseURL = originalURL
+		}()
+
+		_, err := client.makeRequest(ctx, req)
+		if err != nil {
+			t.Logf("Expected error with bad status: %v", err)
+			if !strings.Contains(err.Error(), "status 400") {
+				t.Errorf("Error should mention status 400: %v", err)
+			}
+		} else {
+			t.Error("Expected error with bad status")
 		}
 	})
 }

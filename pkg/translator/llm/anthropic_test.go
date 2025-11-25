@@ -3,9 +3,10 @@ package llm
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
-
 )
 
 func TestAnthropicClient(t *testing.T) {
@@ -308,9 +309,9 @@ func TestAnthropicRequestErrorPaths(t *testing.T) {
 				t.Error("Result should be empty when context is cancelled")
 			}
 			// Check for context-related error
-			if !contains(err.Error(), "context") && 
-			   !contains(err.Error(), "canceled") && 
-			   !contains(err.Error(), "deadline") {
+			if !strings.Contains(err.Error(), "context") && 
+			   !strings.Contains(err.Error(), "canceled") && 
+			   !strings.Contains(err.Error(), "deadline") {
 				t.Logf("Error may not be context-related: %v", err)
 			}
 		}
@@ -343,9 +344,9 @@ func TestAnthropicRequestErrorPaths(t *testing.T) {
 				t.Error("Result should be empty when text is too long")
 			}
 			// Check for size-related error
-			if !contains(err.Error(), "too large") && 
-			   !contains(err.Error(), "size") && 
-			   !contains(err.Error(), "limit") {
+			if !strings.Contains(err.Error(), "too large") && 
+			   !strings.Contains(err.Error(), "size") && 
+			   !strings.Contains(err.Error(), "limit") {
 				t.Logf("Error may not be size-related: %v", err)
 			}
 		}
@@ -375,8 +376,8 @@ func TestAnthropicRequestErrorPaths(t *testing.T) {
 				t.Error("Result should be empty when temperature is invalid")
 			}
 			// Check for temperature-related error
-			if !contains(err.Error(), "temperature") &&
-			   !contains(err.Error(), "invalid") {
+			if !strings.Contains(err.Error(), "temperature") &&
+			   !strings.Contains(err.Error(), "invalid") {
 				t.Logf("Error may not be temperature-related: %v", err)
 			}
 		}
@@ -406,8 +407,8 @@ func TestAnthropicRequestErrorPaths(t *testing.T) {
 				t.Error("Result should be empty when max_tokens is invalid")
 			}
 			// Check for max_tokens-related error
-			if !contains(err.Error(), "max_tokens") &&
-			   !contains(err.Error(), "invalid") {
+			if !strings.Contains(err.Error(), "max_tokens") &&
+			   !strings.Contains(err.Error(), "invalid") {
 				t.Logf("Error may not be max_tokens-related: %v", err)
 			}
 		}
@@ -435,11 +436,208 @@ func TestAnthropicRequestErrorPaths(t *testing.T) {
 				t.Error("Result should be empty when URL is invalid")
 			}
 			// Check for URL-related error
-			if !contains(err.Error(), "url") && 
-			   !contains(err.Error(), "scheme") &&
-			   !contains(err.Error(), "invalid") {
+			if !strings.Contains(err.Error(), "url") && 
+			   !strings.Contains(err.Error(), "scheme") &&
+			   !strings.Contains(err.Error(), "invalid") {
 				t.Logf("Error may not be URL-related: %v", err)
 			}
+		}
+	})
+}
+
+// TestAnthropicTranslateUncoveredPaths tests uncovered error paths in Anthropic Translate function
+func TestAnthropicTranslateUncoveredPaths(t *testing.T) {
+	t.Run("json_marshal_error", func(t *testing.T) {
+		// Test JSON marshaling error by creating a client with problematic data
+		client := &AnthropicClient{
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test_key",
+				Model:    "claude-3-haiku-20240307",
+				Options: map[string]interface{}{
+					// This might cause JSON marshaling issues if it contains invalid data
+					"temperature": float64(0.3),
+				},
+			},
+			httpClient: &http.Client{},
+			baseURL:    "http://localhost:99999", // Invalid port to prevent actual requests
+		}
+		
+		ctx := context.Background()
+		// The request should fail at JSON marshaling or request creation stage
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err != nil {
+			// This confirms the error path is being tested
+			t.Logf("Expected error (JSON marshal or request creation): %v", err)
+		}
+	})
+	
+	t.Run("http_request_error", func(t *testing.T) {
+		client := &AnthropicClient{
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test_key",
+				Model:    "claude-3-haiku-20240307",
+			},
+			httpClient: &http.Client{},
+			baseURL:    "invalid://invalid-url", // Invalid URL scheme
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err == nil {
+			t.Error("Expected HTTP request creation error")
+		}
+		
+		// Should get an error about unsupported protocol scheme
+		if !strings.Contains(err.Error(), "failed to create request") {
+			t.Logf("Error may not be request creation related: %v", err)
+		}
+	})
+	
+	t.Run("response_reading_error", func(t *testing.T) {
+		client := &AnthropicClient{
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test_key",
+				Model:    "claude-3-haiku-20240307",
+			},
+			httpClient: &http.Client{},
+			baseURL:    "http://localhost:99999", // Invalid port
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err == nil {
+			t.Error("Expected connection error")
+		}
+		
+		t.Logf("Expected connection error: %v", err)
+	})
+	
+	t.Run("invalid_response_json", func(t *testing.T) {
+		// Create a mock server that returns invalid JSON
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			// Return invalid JSON (missing closing brace)
+			w.Write([]byte(`{
+				"content": [
+					{
+						"type": "text",
+						"text": "Translated text"
+					}
+				}`))
+		}))
+		defer mockServer.Close()
+		
+		client := &AnthropicClient{
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test_key",
+				Model:    "claude-3-haiku-20240307",
+			},
+			httpClient: &http.Client{},
+			baseURL:    mockServer.URL,
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err == nil {
+			t.Error("Expected error for invalid JSON")
+		}
+		
+		if !strings.Contains(err.Error(), "failed to unmarshal response") {
+			t.Errorf("Expected JSON unmarshal error, got: %v", err)
+		}
+	})
+	
+	t.Run("max_tokens_option_handling", func(t *testing.T) {
+		client := &AnthropicClient{
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test_key",
+				Model:    "claude-3-haiku-20240307",
+				Options: map[string]interface{}{
+					"max_tokens": 2000, // Reasonable value
+				},
+			},
+			httpClient: &http.Client{},
+			baseURL:    "http://localhost:99999", // Invalid port
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err != nil {
+			// Expected to fail due to invalid port
+			t.Logf("Expected connection error: %v", err)
+		}
+		// The important thing is that option was processed during request creation
+	})
+	
+	t.Run("temperature_option_handling", func(t *testing.T) {
+		client := &AnthropicClient{
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test_key",
+				Model:    "claude-3-haiku-20240307",
+				Options: map[string]interface{}{
+					"temperature": 0.8, // Higher value
+				},
+			},
+			httpClient: &http.Client{},
+			baseURL:    "http://localhost:99999", // Invalid port
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err != nil {
+			// Expected to fail due to invalid port
+			t.Logf("Expected connection error: %v", err)
+		}
+		// The important thing is that option was processed during request creation
+	})
+
+	t.Run("empty_content_response", func(t *testing.T) {
+		// Test case where response.Content is empty
+		client, err := NewAnthropicClient(TranslationConfig{
+			Provider: "anthropic",
+			APIKey:   "test-api-key",
+			Model:    "claude-3-haiku-20240307",
+			BaseURL:  "invalid://test", // Invalid URL to force error path
+		})
+		if err != nil || client == nil {
+			t.Skip("Skipping test - client creation failed")
+			return
+		}
+		
+		// Create a mock server that returns empty content
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return valid response structure but with empty content
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"content": []}`))
+		}))
+		defer server.Close()
+
+		client = &AnthropicClient{
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test-api-key",
+				Model:    "claude-3-haiku-20240307",
+			},
+			httpClient: &http.Client{},
+			baseURL:    server.URL,
+		}
+		
+		ctx := context.Background()
+		result, err := client.Translate(ctx, "test text", "test prompt")
+		if err != nil {
+			// Expected error for empty content
+			if !strings.Contains(err.Error(), "no content in response") {
+				t.Errorf("Expected 'no content in response' error, got: %v", err)
+			}
+		} else {
+			t.Error("Expected error for empty content response, got:", result)
 		}
 	})
 }

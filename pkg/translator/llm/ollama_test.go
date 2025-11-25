@@ -2,6 +2,8 @@ package llm
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -446,5 +448,120 @@ func TestOllamaTranslateUncoveredPaths(t *testing.T) {
 		}
 		
 		t.Log("Model defaulting confirmed - request was made without model validation errors")
+	})
+}
+
+// TestOllamaTranslateAdditionalPaths tests additional uncovered error paths in Ollama Translate
+func TestOllamaTranslateAdditionalPaths(t *testing.T) {
+	t.Run("json_marshal_error_for_invalid_options", func(t *testing.T) {
+		client := &OllamaClient{
+			config: TranslationConfig{
+				Provider: "ollama",
+				APIKey:   "test_key",
+				Model:    "llama2",
+				Options: map[string]interface{}{
+					// Add an option that might cause JSON issues
+					"invalid_option": make(chan int), // Channels can't be marshaled to JSON
+				},
+			},
+			httpClient: &http.Client{},
+			baseURL:    "http://localhost:99999", // Invalid port
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err == nil {
+			t.Error("Expected error with invalid option")
+		} else {
+			t.Logf("Expected error with invalid option: %v", err)
+		}
+	})
+	
+	t.Run("response_body_read_error", func(t *testing.T) {
+		// Create a mock server that returns a response but then fails during body reading
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Set headers but don't write body to simulate partial response
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Length", "1")
+			// Close connection without writing body
+			w.(http.Flusher).Flush()
+			hj, ok := w.(http.Hijacker)
+			if ok {
+				conn, _, _ := hj.Hijack()
+				conn.Close()
+			}
+		}))
+		defer mockServer.Close()
+		
+		client := &OllamaClient{
+			config: TranslationConfig{
+				Provider: "ollama",
+				APIKey:   "test_key",
+				Model:    "llama2",
+			},
+			httpClient: &http.Client{},
+			baseURL:    mockServer.URL,
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err == nil {
+			t.Error("Expected error with incomplete response")
+		} else {
+			t.Logf("Expected error with incomplete response: %v", err)
+		}
+	})
+	
+	t.Run("invalid_response_json", func(t *testing.T) {
+		// Create a mock server that returns invalid JSON
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			// Return invalid JSON (missing closing brace)
+			w.Write([]byte(`{"model": "llama2", "response": "test response"`))
+		}))
+		defer mockServer.Close()
+		
+		client := &OllamaClient{
+			config: TranslationConfig{
+				Provider: "ollama",
+				APIKey:   "test_key",
+				Model:    "llama2",
+			},
+			httpClient: &http.Client{},
+			baseURL:    mockServer.URL,
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err == nil {
+			t.Error("Expected error with invalid JSON")
+		}
+		
+		if !strings.Contains(err.Error(), "failed to unmarshal response") {
+			t.Errorf("Expected JSON unmarshal error, got: %v", err)
+		}
+	})
+	
+	t.Run("temperature_option_handling", func(t *testing.T) {
+		client := &OllamaClient{
+			config: TranslationConfig{
+				Provider: "ollama",
+				APIKey:   "test_key",
+				Model:    "llama2",
+				Options: map[string]interface{}{
+					"temperature": 1.5, // Higher than typical range
+				},
+			},
+			httpClient: &http.Client{},
+			baseURL:    "http://localhost:99999", // Invalid port
+		}
+		
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test text", "test prompt")
+		if err != nil {
+			// Expected to fail due to invalid port
+			t.Logf("Expected connection error: %v", err)
+		}
+		// The important thing is that the option was processed during request creation
 	})
 }

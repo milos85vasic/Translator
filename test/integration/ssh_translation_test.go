@@ -2,6 +2,8 @@ package integration
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
 	"net"
 	"os"
@@ -197,13 +199,19 @@ func (s *MockSSHServer) AddHandler(command string, handler func(args []string) (
 
 // generateHostKey generates a temporary host key for the mock server
 func generateHostKey() (ssh.Signer, error) {
-	keyFile := filepath.Join(os.TempDir(), "test_host_key")
-	defer os.Remove(keyFile)
-
-	// Generate a simple test key
-	// In a real implementation, you'd generate a proper RSA/ED25519 key
-	// For testing purposes, we'll create a simple placeholder
-	return nil, nil
+	// Generate a private key for testing
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Parse the PEM block to create a signer
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		return nil, err
+	}
+	
+	return signer, nil
 }
 
 // TestSSHTranslationIntegration tests the complete SSH translation workflow
@@ -224,8 +232,22 @@ func TestSSHTranslationIntegration(t *testing.T) {
 			Format: logger.FORMAT_TEXT,
 		})
 
+		// Parse address to get host and port
+		addr := mockServer.GetAddress()
+		host, portStr, err := net.SplitHostPort(addr)
+		if err != nil {
+			t.Fatalf("Failed to parse mock server address: %v", err)
+		}
+
+		// Convert port string to int
+		port, err := net.LookupPort("tcp", portStr)
+		if err != nil {
+			t.Fatalf("Failed to parse port: %v", err)
+		}
+
 		config := sshworker.SSHWorkerConfig{
-			Host:              mockServer.GetAddress(),
+			Host:              host,
+			Port:              port,
 			Username:          "testuser",
 			Password:          "testpass",
 			RemoteDir:         "/tmp/test",
@@ -254,8 +276,22 @@ func TestSSHTranslationIntegration(t *testing.T) {
 			Format: logger.FORMAT_TEXT,
 		})
 
+		// Parse address to get host and port
+		addr := mockServer.GetAddress()
+		host, portStr, err := net.SplitHostPort(addr)
+		if err != nil {
+			t.Fatalf("Failed to parse mock server address: %v", err)
+		}
+
+		// Convert port string to int
+		port, err := net.LookupPort("tcp", portStr)
+		if err != nil {
+			t.Fatalf("Failed to parse port: %v", err)
+		}
+
 		config := sshworker.SSHWorkerConfig{
-			Host:              mockServer.GetAddress(),
+			Host:              host,
+			Port:              port,
 			Username:          "testuser",
 			Password:          "testpass",
 			RemoteDir:         "/tmp/test",
@@ -301,8 +337,22 @@ func TestSSHTranslationIntegration(t *testing.T) {
 			Format: logger.FORMAT_TEXT,
 		})
 
+		// Parse address to get host and port
+		addr := mockServer.GetAddress()
+		host, portStr, err := net.SplitHostPort(addr)
+		if err != nil {
+			t.Fatalf("Failed to parse mock server address: %v", err)
+		}
+
+		// Convert port string to int
+		port, err := net.LookupPort("tcp", portStr)
+		if err != nil {
+			t.Fatalf("Failed to parse port: %v", err)
+		}
+
 		config := sshworker.SSHWorkerConfig{
-			Host:              mockServer.GetAddress(),
+			Host:              host,
+			Port:              port,
 			Username:          "testuser",
 			Password:          "testpass",
 			RemoteDir:         "/tmp/test",
@@ -448,8 +498,22 @@ func TestSSHTranslationErrorHandling(t *testing.T) {
 				Format: logger.FORMAT_TEXT,
 			})
 
+			// Parse address to get host and port
+			addr := mockServer.GetAddress()
+			host, portStr, err := net.SplitHostPort(addr)
+			if err != nil {
+				t.Fatalf("Failed to parse mock server address: %v", err)
+			}
+
+			// Convert port string to int
+			port, err := net.LookupPort("tcp", portStr)
+			if err != nil {
+				t.Fatalf("Failed to parse port: %v", err)
+			}
+
 			config := sshworker.SSHWorkerConfig{
-				Host:              mockServer.GetAddress(),
+				Host:              host,
+				Port:              port,
 				Username:          "testuser",
 				Password:          "testpass",
 				RemoteDir:         "/tmp/test",

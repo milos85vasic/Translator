@@ -1,0 +1,3 @@
+Dies ist ein deutscher Beispieltext zum Testen der Übersetzungsfunktionalität.
+Er enthält mehrere Sätze und eignet sich für Übersetzungstests.
+Der Text enthält verschiedene Satzzeichen und Satzstrukturen.

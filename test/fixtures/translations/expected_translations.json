@@ -1,0 +1,24 @@
+{
+  "translations": {
+    "en_to_es": {
+      "source": "Hello world",
+      "expected": "Hola mundo"
+    },
+    "en_to_fr": {
+      "source": "Hello world",
+      "expected": "Bonjour le monde"
+    },
+    "en_to_de": {
+      "source": "Hello world",
+      "expected": "Hallo Welt"
+    },
+    "en_to_ru": {
+      "source": "Hello world",
+      "expected": "Привет мир"
+    },
+    "es_to_en": {
+      "source": "Hola mundo",
+      "expected": "Hello world"
+    }
+  }
+}

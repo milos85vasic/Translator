@@ -1,9 +1,0 @@
-# digital.vasic.translator/pkg/translator
-package digital.vasic.translator/pkg/translator
-	imports digital.vasic.translator/pkg/translator/llm from universal_test.go
-	imports digital.vasic.translator/pkg/translator from llm.go: import cycle not allowed in test
-FAIL	digital.vasic.translator/pkg/translator [setup failed]
-ok  	digital.vasic.translator/pkg/api	0.600s	coverage: 32.8% of statements
-ok  	digital.vasic.translator/pkg/batch	(cached)	coverage: 77.2% of statements
-ok  	digital.vasic.translator/pkg/coordination	0.796s	coverage: 83.4% of statements
-ok  	digital.vasic.translator/pkg/deployment	(cached)	coverage: 37.0% of statements

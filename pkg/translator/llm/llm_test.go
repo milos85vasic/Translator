@@ -942,10 +942,11 @@ func TestConvertFromTranslatorConfig(t *testing.T) {
 	originalConfig := translator.TranslationConfig{
 		SourceLang:     "en",
 		TargetLang:     "ru",
-		SourceLanguage: "English",
-		TargetLanguage: "Russian",
 		Provider:       "openai",
 		Model:          "gpt-4",
+		Temperature:    0.7,
+		MaxTokens:      1000,
+		Timeout:        30 * time.Second,
 		APIKey:         "test-key",
 		BaseURL:        "https://api.openai.com/v1",
 		Script:         "latin",

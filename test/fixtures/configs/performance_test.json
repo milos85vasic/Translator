@@ -1,0 +1,8 @@
+{
+  "provider": "mock",
+  "model": "performance-test",
+  "temperature": 0.1,
+  "max_tokens": 2000,
+  "target_language": "fr",
+  "output_format": "txt"
+}

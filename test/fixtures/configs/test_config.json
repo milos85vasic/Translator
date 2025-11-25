@@ -1,0 +1,8 @@
+{
+  "provider": "mock",
+  "model": "test-model",
+  "temperature": 0.3,
+  "max_tokens": 1000,
+  "target_language": "es",
+  "output_format": "epub"
+}

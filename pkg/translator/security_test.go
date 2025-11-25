@@ -96,8 +96,8 @@ func TestAPIKeyExposure(t *testing.T) {
 	config := translator.TranslationConfig{
 		Provider:       "deepseek",
 		Model:          "deepseek-chat",
-		SourceLanguage: "ru",
-		TargetLanguage: "sr",
+		SourceLang: "ru",
+		TargetLang: "sr",
 	}
 
 	client, err := llm.NewDeepSeekClient(config)

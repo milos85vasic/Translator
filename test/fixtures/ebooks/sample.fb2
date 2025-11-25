@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+<description>
+<title-info>
+<book-title>Test Book</book-title>
+<author>
+<first-name>Test</first-name>
+<last-name>Author</last-name>
+</author>
+<lang>en</lang>
+</title-info>
+</description>
+<body>
+<section>
+<title><p>Test Chapter</p></title>
+<p>This is a test FB2 document for translation testing.</p>
+<p>It contains section titles and paragraphs to validate conversion accuracy.</p>
+<subtitle><p>Section 1.1</p></subtitle>
+<p>This is a subsection with additional content for comprehensive testing.</p>
+</section>
+</body>
+</FictionBook>

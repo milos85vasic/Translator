@@ -10,6 +10,17 @@ import (
 )
 
 func TestCodebaseHasher_CalculateHash(t *testing.T) {
+	// Change to project root directory if not already there
+	if _, err := os.Stat("cmd"); os.IsNotExist(err) {
+		// Try to find project root by looking for go.mod
+		for i := 0; i < 5; i++ {
+			if _, err := os.Stat("go.mod"); err == nil {
+				break
+			}
+			os.Chdir("..")
+		}
+	}
+	
 	hasher := NewCodebaseHasher()
 	
 	// Test that we can calculate a hash
@@ -23,14 +34,14 @@ func TestCodebaseHasher_CalculateHash(t *testing.T) {
 		t.Errorf("Expected hash length 64, got %d", len(hash))
 	}
 	
-	// Calculate hash again - should be different due to timestamp
+	// Calculate hash again - should be identical for same codebase state
 	hash2, err := hasher.CalculateHash()
 	if err != nil {
 		t.Fatalf("Failed to calculate second hash: %v", err)
 	}
 	
-	if hash == hash2 {
-		t.Error("Hashes should be different due to timestamp")
+	if hash != hash2 {
+		t.Error("Hashes should be identical for same codebase state")
 	}
 }
 
@@ -179,6 +190,17 @@ func TestCodebaseHasher_CompareVersions(t *testing.T) {
 }
 
 func TestCodebaseHasher_GenerateVersionInfo(t *testing.T) {
+	// Change to project root directory if not already there
+	if _, err := os.Stat("cmd"); os.IsNotExist(err) {
+		// Try to find project root by looking for go.mod
+		for i := 0; i < 5; i++ {
+			if _, err := os.Stat("go.mod"); err == nil {
+				break
+			}
+			os.Chdir("..")
+		}
+	}
+	
 	hasher := NewCodebaseHasher()
 	
 	info, err := hasher.GenerateVersionInfo()

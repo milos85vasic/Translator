@@ -145,11 +145,11 @@ func TestTranslationWorkflow_E2E(t *testing.T) {
 
 		// Create translator config
 		config := translator.TranslationConfig{
-			Provider:       "deepseek",
-			Model:          "deepseek-chat",
-			SourceLanguage: "ru",
-			TargetLanguage: "sr",
-			Script:         "cyrillic",
+			Provider:   "deepseek",
+			Model:      "deepseek-chat",
+			SourceLang: "ru",
+			TargetLang: "sr",
+			Script:     "cyrillic",
 		}
 
 		// Create client
@@ -185,8 +185,8 @@ Serbian:`
 		// Try to create client - it will skip if llama.cpp not available
 		config := translator.TranslationConfig{
 			Provider:       "llamacpp",
-			SourceLanguage: "ru",
-			TargetLanguage: "sr",
+			SourceLang: "ru",
+			TargetLang: "sr",
 			Script:         "cyrillic",
 		}
 
@@ -236,8 +236,8 @@ func TestConfigurationScenarios(t *testing.T) {
 			config: translator.TranslationConfig{
 				Provider:       "deepseek",
 				Model:          "deepseek-chat",
-				SourceLanguage: "ru",
-				TargetLanguage: "sr",
+				SourceLang: "ru",
+				TargetLang: "sr",
 				Script:         "cyrillic",
 			},
 			shouldError: false,
@@ -248,8 +248,8 @@ func TestConfigurationScenarios(t *testing.T) {
 			config: translator.TranslationConfig{
 				Provider:       "deepseek",
 				Model:          "deepseek-chat",
-				SourceLanguage: "ru",
-				TargetLanguage: "sr",
+				SourceLang: "ru",
+				TargetLang: "sr",
 				Script:         "latin",
 			},
 			shouldError: false,
@@ -259,8 +259,8 @@ func TestConfigurationScenarios(t *testing.T) {
 			name: "LlamaCpp with Auto Model Selection",
 			config: translator.TranslationConfig{
 				Provider:       "llamacpp",
-				SourceLanguage: "ru",
-				TargetLanguage: "sr",
+				SourceLang: "ru",
+				TargetLang: "sr",
 				Script:         "cyrillic",
 			},
 			shouldError: false,
@@ -270,8 +270,8 @@ func TestConfigurationScenarios(t *testing.T) {
 			name: "Invalid Provider",
 			config: translator.TranslationConfig{
 				Provider:       "invalid-provider",
-				SourceLanguage: "ru",
-				TargetLanguage: "sr",
+				SourceLang: "ru",
+				TargetLang: "sr",
 			},
 			shouldError: true,
 			skipReason:  "",
@@ -357,8 +357,8 @@ func TestErrorHandling(t *testing.T) {
 		config := translator.TranslationConfig{
 			Provider:       "deepseek",
 			Model:          "deepseek-chat",
-			SourceLanguage: "ru",
-			TargetLanguage: "sr",
+			SourceLang: "ru",
+			TargetLang: "sr",
 		}
 
 		client, err := llm.NewDeepSeekClient(config)
@@ -393,8 +393,8 @@ func TestConcurrentTranslations(t *testing.T) {
 	config := translator.TranslationConfig{
 		Provider:       "deepseek",
 		Model:          "deepseek-chat",
-		SourceLanguage: "ru",
-		TargetLanguage: "sr",
+		SourceLang: "ru",
+		TargetLang: "sr",
 	}
 
 	client, err := llm.NewDeepSeekClient(config)

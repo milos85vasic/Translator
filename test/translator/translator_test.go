@@ -93,12 +93,12 @@ func TestTranslationConfig(t *testing.T) {
 	assert.Equal(t, "es", config.TargetLang)
 	assert.Equal(t, "test", config.Provider)
 	
-	// Test alias compatibility
-	config.SourceLanguage = "fr"
-	config.TargetLanguage = "de"
+	// Test alias compatibility (using SourceLang/TargetLang as aliases)
+	config.SourceLang = "fr"
+	config.TargetLang = "de"
 	
-	assert.Equal(t, "fr", config.SourceLanguage)
-	assert.Equal(t, "de", config.TargetLanguage)
+	assert.Equal(t, "fr", config.SourceLang)
+	assert.Equal(t, "de", config.TargetLang)
 }
 
 // TestTranslationResult tests result structure

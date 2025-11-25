@@ -9,29 +9,20 @@ import (
 	"strings"
 )
 
-// TranslationConfig holds translation configuration (local copy to avoid import cycle)
-type TranslationConfig struct {
-	SourceLang     string
-	TargetLang     string
-	SourceLanguage string // Alias for SourceLang
-	TargetLanguage string // Alias for TargetLang
-	Provider       string
-	Model          string
-	APIKey         string
-	BaseURL        string
-	Script         string // Script type (cyrillic, latin)
-	Options        map[string]interface{}
-}
+// TranslationConfig holds translation configuration (use from parent package to avoid import cycle)
+// Alias to parent package's TranslationConfig
+type TranslationConfig = translator.TranslationConfig
 
 // ConvertFromTranslatorConfig converts from parent package config to local config
 func ConvertFromTranslatorConfig(config translator.TranslationConfig) TranslationConfig {
 	return TranslationConfig{
 		SourceLang:     config.SourceLang,
 		TargetLang:     config.TargetLang,
-		SourceLanguage: config.SourceLanguage,
-		TargetLanguage: config.TargetLanguage,
 		Provider:       config.Provider,
 		Model:          config.Model,
+		Temperature:    config.Temperature,
+		MaxTokens:      config.MaxTokens,
+		Timeout:        config.Timeout,
 		APIKey:         config.APIKey,
 		BaseURL:        config.BaseURL,
 		Script:         config.Script,

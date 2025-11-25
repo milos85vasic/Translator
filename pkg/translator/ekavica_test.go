@@ -12,11 +12,11 @@ import (
 // TestEkavicaPromptInclusion tests that the translation prompt includes Ekavica requirements
 func TestEkavicaPromptInclusion(t *testing.T) {
 	config := translator.TranslationConfig{
-		Provider:       "deepseek",
-		Model:          "deepseek-chat",
-		SourceLanguage: "en",
-		TargetLanguage: "es",
-		APIKey:         "test-key",
+		Provider:   "deepseek",
+		Model:      "deepseek-chat",
+		SourceLang: "en",
+		TargetLang: "es",
+		APIKey:     "test-key",
 	}
 
 	_, err := llm.NewLLMTranslator(config)

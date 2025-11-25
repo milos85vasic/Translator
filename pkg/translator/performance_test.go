@@ -73,8 +73,8 @@ func BenchmarkTranslation(b *testing.B) {
 	config := translator.TranslationConfig{
 		Provider:       "deepseek",
 		Model:          "deepseek-chat",
-		SourceLanguage: "ru",
-		TargetLanguage: "sr",
+		SourceLang: "ru",
+		TargetLang: "sr",
 	}
 
 	client, err := llm.NewDeepSeekClient(config)
@@ -110,8 +110,8 @@ func TestStressTranslation(t *testing.T) {
 	config := translator.TranslationConfig{
 		Provider:       "deepseek",
 		Model:          "deepseek-chat",
-		SourceLanguage: "ru",
-		TargetLanguage: "sr",
+		SourceLang: "ru",
+		TargetLang: "sr",
 	}
 
 	client, err := llm.NewDeepSeekClient(config)
@@ -181,8 +181,8 @@ func TestLargeTextTranslation(t *testing.T) {
 	config := translator.TranslationConfig{
 		Provider:       "deepseek",
 		Model:          "deepseek-chat",
-		SourceLanguage: "ru",
-		TargetLanguage: "sr",
+		SourceLang: "ru",
+		TargetLang: "sr",
 	}
 
 	client, err := llm.NewDeepSeekClient(config)
@@ -268,8 +268,8 @@ func TestResponseTime(t *testing.T) {
 	config := translator.TranslationConfig{
 		Provider:       "deepseek",
 		Model:          "deepseek-chat",
-		SourceLanguage: "ru",
-		TargetLanguage: "sr",
+		SourceLang: "ru",
+		TargetLang: "sr",
 	}
 
 	client, err := llm.NewDeepSeekClient(config)

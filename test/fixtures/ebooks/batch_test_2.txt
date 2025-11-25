@@ -1,0 +1,3 @@
+Second document for batch processing test.
+This is another file in the batch.
+Batch processing should handle multiple files efficiently.

@@ -1,66 +1,13 @@
 package translator
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"digital.vasic.translator/pkg/events"
 	"digital.vasic.translator/pkg/language"
 )
-
-// MockTranslator is a mock implementation of the Translator interface
-type MockTranslator struct {
-	mock.Mock
-}
-
-func (m *MockTranslator) Translate(ctx context.Context, text string, context string) (string, error) {
-	args := m.Called(ctx, text, context)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockTranslator) TranslateWithProgress(ctx context.Context, text string, context string, eventBus *events.EventBus, sessionID string) (string, error) {
-	args := m.Called(ctx, text, context, eventBus, sessionID)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockTranslator) GetStats() TranslationStats {
-	args := m.Called()
-	return args.Get(0).(TranslationStats)
-}
-
-func (m *MockTranslator) GetName() string {
-	args := m.Called()
-	return args.String(0)
-}
-
-// MockLanguageDetector is a mock implementation of language detector
-type MockLanguageDetector struct {
-	mock.Mock
-}
-
-func (m *MockLanguageDetector) Detect(ctx context.Context, text string) (language.Language, error) {
-	args := m.Called(ctx, text)
-	return args.Get(0).(language.Language), args.Error(1)
-}
-
-// NewMockDetector creates a mock detector that implements the required interface
-func NewMockDetector() *language.Detector {
-	mockLLMDetector := new(MockLLMDetector)
-	return language.NewDetector(mockLLMDetector)
-}
-
-// MockLLMDetector implements the LLMDetector interface
-type MockLLMDetector struct {
-	mock.Mock
-}
-
-func (m *MockLLMDetector) DetectLanguage(ctx context.Context, text string) (string, error) {
-	args := m.Called(ctx, text)
-	return args.String(0), args.Error(1)
-}
 
 // TestNewUniversalTranslator tests the creation of a universal translator
 func TestNewUniversalTranslator(t *testing.T) {

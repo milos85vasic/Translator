@@ -109,7 +109,12 @@ func EmitError(eventBus *events.EventBus, sessionID, message string, err error) 
 	}
 
 	data := map[string]interface{}{
-		"error": err.Error(),
+		"error": func() string {
+			if err != nil {
+				return err.Error()
+			}
+			return "nil error"
+		}(),
 	}
 
 	event := events.NewEvent(events.EventTranslationError, message, data)

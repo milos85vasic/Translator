@@ -37,6 +37,10 @@ func (ut *UniversalTranslator) TranslateBook(
 	eventBus *events.EventBus,
 	sessionID string,
 ) error {
+	if book == nil {
+		return fmt.Errorf("book cannot be nil")
+	}
+	
 	// Detect source language if not specified
 	if ut.sourceLanguage.Code == "" && ut.langDetector != nil {
 		EmitProgress(eventBus, sessionID, "Detecting source language", nil)

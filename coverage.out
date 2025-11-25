@@ -76,7 +76,7 @@ digital.vasic.translator/pkg/translator/llm/gemini.go:163.64,166.18 2 1
 digital.vasic.translator/pkg/translator/llm/gemini.go:166.18,169.3 2 1
 digital.vasic.translator/pkg/translator/llm/gemini.go:171.2,176.28 5 1
 digital.vasic.translator/pkg/translator/llm/gemini.go:180.101,183.17 2 1
-digital.vasic.translator/pkg/translator/llm/gemini.go:183.17,185.3 1 0
+digital.vasic.translator/pkg/translator/llm/gemini.go:183.17,185.3 1 1
 digital.vasic.translator/pkg/translator/llm/gemini.go:187.2,194.16 3 1
 digital.vasic.translator/pkg/translator/llm/gemini.go:194.16,196.3 1 0
 digital.vasic.translator/pkg/translator/llm/gemini.go:199.2,200.16 2 1
@@ -107,8 +107,8 @@ digital.vasic.translator/pkg/translator/llm/llamacpp.go:38.16,40.3 1 0
 digital.vasic.translator/pkg/translator/llm/llamacpp.go:43.2,49.24 4 1
 digital.vasic.translator/pkg/translator/llm/llamacpp.go:49.24,52.14 2 1
 digital.vasic.translator/pkg/translator/llm/llamacpp.go:52.14,54.4 1 1
-digital.vasic.translator/pkg/translator/llm/llamacpp.go:57.3,57.46 1 0
-digital.vasic.translator/pkg/translator/llm/llamacpp.go:57.46,64.4 1 0
+digital.vasic.translator/pkg/translator/llm/llamacpp.go:57.3,57.46 1 1
+digital.vasic.translator/pkg/translator/llm/llamacpp.go:57.46,64.4 1 1
 digital.vasic.translator/pkg/translator/llm/llamacpp.go:65.8,76.17 3 1
 digital.vasic.translator/pkg/translator/llm/llamacpp.go:76.17,78.4 1 0
 digital.vasic.translator/pkg/translator/llm/llamacpp.go:80.3,83.44 2 1
@@ -466,9 +466,9 @@ digital.vasic.translator/pkg/translator/llm/qwen.go:225.38,228.3 2 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:231.2,239.16 3 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:239.16,241.3 1 0
 digital.vasic.translator/pkg/translator/llm/qwen.go:243.2,243.63 1 1
-digital.vasic.translator/pkg/translator/llm/qwen.go:243.63,245.3 1 0
+digital.vasic.translator/pkg/translator/llm/qwen.go:243.63,245.3 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:248.2,248.39 1 1
-digital.vasic.translator/pkg/translator/llm/qwen.go:248.39,250.3 1 0
+digital.vasic.translator/pkg/translator/llm/qwen.go:248.39,250.3 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:252.2,257.40 4 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:257.40,259.3 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:262.2,262.55 1 1

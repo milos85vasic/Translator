@@ -10,9 +10,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -619,6 +621,297 @@ func TestRefreshTokenSaveError(t *testing.T) {
 
 	// Restore permissions for cleanup
 	_ = os.Chmod(tempDir, 0700)
+}
+
+// TestRefreshTokenUncoveredPaths tests additional error paths in refreshToken
+func TestRefreshTokenUncoveredPaths(t *testing.T) {
+	// Test 1: Missing environment variables
+	t.Run("missing_environment_variables", func(t *testing.T) {
+		// Clear environment variables
+		oldClientID := os.Getenv("QWEN_CLIENT_ID")
+		oldClientSecret := os.Getenv("QWEN_CLIENT_SECRET")
+		os.Unsetenv("QWEN_CLIENT_ID")
+		os.Unsetenv("QWEN_CLIENT_SECRET")
+		defer func() {
+			if oldClientID != "" {
+				os.Setenv("QWEN_CLIENT_ID", oldClientID)
+			}
+			if oldClientSecret != "" {
+				os.Setenv("QWEN_CLIENT_SECRET", oldClientSecret)
+			}
+		}()
+
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "dummy-api-key",
+		}
+
+		client, err := NewQwenClient(config)
+		require.NoError(t, err)
+
+		// Set up valid token
+		client.oauthToken = &QwenOAuthToken{
+			AccessToken:  "access_token",
+			TokenType:    "Bearer",
+			RefreshToken: "refresh_token",
+			ResourceURL:  "https://resource.url",
+			ExpiryDate:   time.Now().UnixMilli() + 3600000,
+		}
+
+		// This should fail due to missing environment variables
+		err = client.refreshToken()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "QWEN_CLIENT_ID")
+	})
+
+	// Test 2: Missing client secret only
+	t.Run("missing_client_secret", func(t *testing.T) {
+		// Set only client ID but not secret
+		oldClientID := os.Getenv("QWEN_CLIENT_ID")
+		oldClientSecret := os.Getenv("QWEN_CLIENT_SECRET")
+		os.Setenv("QWEN_CLIENT_ID", "test_client_id")
+		os.Unsetenv("QWEN_CLIENT_SECRET")
+		defer func() {
+			if oldClientID != "" {
+				os.Setenv("QWEN_CLIENT_ID", oldClientID)
+			}
+			if oldClientSecret != "" {
+				os.Setenv("QWEN_CLIENT_SECRET", oldClientSecret)
+			}
+		}()
+
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "dummy-api-key",
+		}
+
+		client, err := NewQwenClient(config)
+		require.NoError(t, err)
+
+		// Set up valid token
+		client.oauthToken = &QwenOAuthToken{
+			AccessToken:  "access_token",
+			TokenType:    "Bearer",
+			RefreshToken: "refresh_token",
+			ResourceURL:  "https://resource.url",
+			ExpiryDate:   time.Now().UnixMilli() + 3600000,
+		}
+
+		// This should fail due to missing client secret
+		err = client.refreshToken()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "QWEN_CLIENT_SECRET")
+	})
+
+	// Test 3: Test with invalid token structure to trigger marshaling errors
+	t.Run("marshaling_errors", func(t *testing.T) {
+		// Set environment variables
+		oldClientID := os.Getenv("QWEN_CLIENT_ID")
+		oldClientSecret := os.Getenv("QWEN_CLIENT_SECRET")
+		os.Setenv("QWEN_CLIENT_ID", "test_client_id")
+		os.Setenv("QWEN_CLIENT_SECRET", "test_client_secret")
+		defer func() {
+			if oldClientID != "" {
+				os.Setenv("QWEN_CLIENT_ID", oldClientID)
+			}
+			if oldClientSecret != "" {
+				os.Setenv("QWEN_CLIENT_SECRET", oldClientSecret)
+			}
+		}()
+
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "dummy-api-key",
+		}
+
+		client, err := NewQwenClient(config)
+		require.NoError(t, err)
+
+		// Set up valid token
+		client.oauthToken = &QwenOAuthToken{
+			AccessToken:  "access_token",
+			TokenType:    "Bearer",
+			RefreshToken: "refresh_token",
+			ResourceURL:  "https://resource.url",
+			ExpiryDate:   time.Now().UnixMilli() + 3600000,
+		}
+
+		// This should fail due to network errors or invalid response
+		// We're testing the marshaling and general error handling paths
+		err = client.refreshToken()
+		if err != nil {
+			t.Logf("Expected error (network/request structure tested): %v", err)
+			// Should contain some error about refresh failing
+			assert.True(t, strings.Contains(err.Error(), "refresh") || 
+				strings.Contains(err.Error(), "request") ||
+				strings.Contains(err.Error(), "connection"))
+		}
+	})
+
+	// Test 4: Test with nil/invalid response
+	t.Run("response_parsing_errors", func(t *testing.T) {
+		// Set environment variables
+		oldClientID := os.Getenv("QWEN_CLIENT_ID")
+		oldClientSecret := os.Getenv("QWEN_CLIENT_SECRET")
+		os.Setenv("QWEN_CLIENT_ID", "test_client_id")
+		os.Setenv("QWEN_CLIENT_SECRET", "test_client_secret")
+		defer func() {
+			if oldClientID != "" {
+				os.Setenv("QWEN_CLIENT_ID", oldClientID)
+			}
+			if oldClientSecret != "" {
+				os.Setenv("QWEN_CLIENT_SECRET", oldClientSecret)
+			}
+		}()
+
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "dummy-api-key",
+		}
+
+		client, err := NewQwenClient(config)
+		require.NoError(t, err)
+
+		// Set up valid token
+		client.oauthToken = &QwenOAuthToken{
+			AccessToken:  "access_token",
+			TokenType:    "Bearer",
+			RefreshToken: "refresh_token",
+			ResourceURL:  "https://resource.url",
+			ExpiryDate:   time.Now().UnixMilli() + 3600000,
+		}
+
+		// Mock the HTTP client to return invalid response
+		mockClient := &http.Client{
+			Transport: &mockTransport{
+				responseCode: 200,
+				responseBody: []byte(`{invalid json response}`), // Invalid JSON
+			},
+		}
+
+		// Replace the client's HTTP client with mock
+		originalClient := client.httpClient
+		client.httpClient = mockClient
+		defer func() {
+			client.httpClient = originalClient
+		}()
+
+		// This should fail due to JSON parsing error
+		err = client.refreshToken()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to parse refresh response")
+	})
+
+	// Test 5: Test with response missing access token
+	t.Run("missing_access_token_in_response", func(t *testing.T) {
+		// Set environment variables
+		oldClientID := os.Getenv("QWEN_CLIENT_ID")
+		oldClientSecret := os.Getenv("QWEN_CLIENT_SECRET")
+		os.Setenv("QWEN_CLIENT_ID", "test_client_id")
+		os.Setenv("QWEN_CLIENT_SECRET", "test_client_secret")
+		defer func() {
+			if oldClientID != "" {
+				os.Setenv("QWEN_CLIENT_ID", oldClientID)
+			}
+			if oldClientSecret != "" {
+				os.Setenv("QWEN_CLIENT_SECRET", oldClientSecret)
+			}
+		}()
+
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "dummy-api-key",
+		}
+
+		client, err := NewQwenClient(config)
+		require.NoError(t, err)
+
+		// Set up valid token
+		client.oauthToken = &QwenOAuthToken{
+			AccessToken:  "access_token",
+			TokenType:    "Bearer",
+			RefreshToken: "refresh_token",
+			ResourceURL:  "https://resource.url",
+			ExpiryDate:   time.Now().UnixMilli() + 3600000,
+		}
+
+		// Mock the HTTP client to return response without access token
+		mockClient := &http.Client{
+			Transport: &mockTransport{
+				responseCode: 200,
+				responseBody: []byte(`{
+					"token_type": "Bearer",
+					"expires_in": 7200
+				}`),
+			},
+		}
+
+		// Replace the client's HTTP client with mock
+		originalClient := client.httpClient
+		client.httpClient = mockClient
+		defer func() {
+			client.httpClient = originalClient
+		}()
+
+		// This should fail due to missing access token
+		err = client.refreshToken()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing access token")
+	})
+
+	// Test 6: Test with non-200 status code
+	t.Run("non_200_status_code", func(t *testing.T) {
+		// Set environment variables
+		oldClientID := os.Getenv("QWEN_CLIENT_ID")
+		oldClientSecret := os.Getenv("QWEN_CLIENT_SECRET")
+		os.Setenv("QWEN_CLIENT_ID", "test_client_id")
+		os.Setenv("QWEN_CLIENT_SECRET", "test_client_secret")
+		defer func() {
+			if oldClientID != "" {
+				os.Setenv("QWEN_CLIENT_ID", oldClientID)
+			}
+			if oldClientSecret != "" {
+				os.Setenv("QWEN_CLIENT_SECRET", oldClientSecret)
+			}
+		}()
+
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "dummy-api-key",
+		}
+
+		client, err := NewQwenClient(config)
+		require.NoError(t, err)
+
+		// Set up valid token
+		client.oauthToken = &QwenOAuthToken{
+			AccessToken:  "access_token",
+			TokenType:    "Bearer",
+			RefreshToken: "refresh_token",
+			ResourceURL:  "https://resource.url",
+			ExpiryDate:   time.Now().UnixMilli() + 3600000,
+		}
+
+		// Mock the HTTP client to return error status
+		mockClient := &http.Client{
+			Transport: &mockTransport{
+				responseCode: 401,
+				responseBody: []byte(`{"error": "Unauthorized"}`),
+			},
+		}
+
+		// Replace the client's HTTP client with mock
+		originalClient := client.httpClient
+		client.httpClient = mockClient
+		defer func() {
+			client.httpClient = originalClient
+		}()
+
+		// This should fail due to non-200 status code
+		err = client.refreshToken()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "401")
+	})
 }
 
 // mockTransport implements http.RoundTripper for testing

@@ -2,6 +2,8 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -638,6 +640,94 @@ func TestAnthropicTranslateUncoveredPaths(t *testing.T) {
 			}
 		} else {
 			t.Error("Expected error for empty content response, got:", result)
+		}
+	})
+}
+
+// TestAnthropicTranslateAdditionalErrorPaths tests additional error paths in Translate
+func TestAnthropicTranslateAdditionalErrorPaths(t *testing.T) {
+	t.Run("context_cancellation", func(t *testing.T) {
+		client := &AnthropicClient{
+			baseURL: "https://api.anthropic.com/v1",
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test-key",
+				Model:    "claude-3-sonnet-20240229",
+			},
+			httpClient: &http.Client{},
+		}
+
+		// Create a cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := client.Translate(ctx, "test text", "translate")
+		if err == nil {
+			t.Error("Expected error with cancelled context")
+		} else {
+			t.Logf("Got expected error with cancelled context: %v", err)
+		}
+	})
+
+	t.Run("custom_model_and_options", func(t *testing.T) {
+		// Test with custom model and options to hit those code paths
+		client := &AnthropicClient{
+			baseURL: "https://api.anthropic.com/v1",
+			config: TranslationConfig{
+				Provider: "anthropic",
+				APIKey:   "test-key",
+				Model:    "", // Empty to trigger default
+				Options: map[string]interface{}{
+					"temperature": 0.7,
+					"max_tokens":  2048,
+				},
+			},
+			httpClient: &http.Client{},
+		}
+
+		// Mock server to verify request structure
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check headers
+			if r.Header.Get("x-api-key") != "test-key" {
+				t.Errorf("Expected x-api-key header, got: %s", r.Header.Get("x-api-key"))
+			}
+			if r.Header.Get("anthropic-version") != "2023-06-01" {
+				t.Errorf("Expected anthropic-version header, got: %s", r.Header.Get("anthropic-version"))
+			}
+
+			// Parse request body to verify model and options
+			body, _ := io.ReadAll(r.Body)
+			var req AnthropicRequest
+			if err := json.Unmarshal(body, &req); err == nil {
+				// Should use default model when empty
+				if req.Model != "claude-3-sonnet-20240229" {
+					t.Errorf("Expected default model, got: %s", req.Model)
+				}
+				// Should use custom options
+				if req.Temperature != 0.7 {
+					t.Errorf("Expected temperature 0.7, got: %f", req.Temperature)
+				}
+				if req.MaxTokens != 2048 {
+					t.Errorf("Expected max_tokens 2048, got: %d", req.MaxTokens)
+				}
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"content":[{"text":"test response"}]}`))
+		}))
+		defer server.Close()
+
+		originalURL := client.baseURL
+		client.baseURL = server.URL
+		defer func() {
+			client.baseURL = originalURL
+		}()
+
+		ctx := context.Background()
+		_, err := client.Translate(ctx, "test", "translate")
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
 		}
 	})
 }

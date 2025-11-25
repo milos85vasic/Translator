@@ -409,6 +409,42 @@ func TestGeminiMakeRequestAdditionalPaths(t *testing.T) {
 		}
 	})
 
+	t.Run("empty_model_defaults_to_gemini_pro", func(t *testing.T) {
+		// Test that empty model defaults to "gemini-pro"
+		client := &GeminiClient{
+			baseURL: "https://generativelanguage.googleapis.com/v1beta",
+			config: TranslationConfig{
+				Provider: "gemini",
+				APIKey:   "test-api-key",
+				Model:    "", // Empty model should default to gemini-pro
+			},
+			httpClient: &http.Client{},
+		}
+
+		// Mock server to capture the request
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check that the URL contains "gemini-pro" model
+			if !strings.Contains(r.URL.String(), "gemini-pro") {
+				t.Errorf("Expected URL to contain 'gemini-pro', got: %s", r.URL.String())
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"candidates":[{"content":{"parts":[{"text":"test"}]}}]}`))
+		}))
+		defer server.Close()
+
+		originalURL := client.baseURL
+		client.baseURL = server.URL
+		defer func() {
+			client.baseURL = originalURL
+		}()
+
+		_, err := client.makeRequest(ctx, req)
+		if err != nil {
+			t.Errorf("Unexpected error with empty model: %v", err)
+		}
+	})
+
 	t.Run("malformed_json_response", func(t *testing.T) {
 		// Create a mock server that returns invalid JSON
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

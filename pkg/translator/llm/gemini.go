@@ -81,6 +81,10 @@ type GeminiUsageMetadata struct {
 
 // NewGeminiClient creates a new Gemini client
 func NewGeminiClient(config TranslationConfig) (*GeminiClient, error) {
+	if config.APIKey == "" {
+		return nil, fmt.Errorf("API key is required for Gemini")
+	}
+	
 	baseURL := config.BaseURL
 	if baseURL == "" {
 		baseURL = "https://generativelanguage.googleapis.com/v1beta"

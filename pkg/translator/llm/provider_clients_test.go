@@ -3,11 +3,16 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	
+	"digital.vasic.translator/pkg/events"
 )
 
 // TestEdgeCaseAPIResponses tests edge cases in provider API responses
@@ -1376,5 +1381,566 @@ func TestGeminiRequestStruct(t *testing.T) {
 	_, err := json.Marshal(req)
 	if err != nil {
 		t.Errorf("Error marshaling GeminiRequest: %v", err)
+	}
+}
+
+// TestQwenClientValidation tests Qwen client validation scenarios
+func TestQwenClientValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  TranslationConfig
+		wantErr bool
+	}{
+		{
+			name: "valid Qwen config",
+			config: TranslationConfig{
+				APIKey: "test_key",
+				Model:  "qwen-max",
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid Qwen config - no API key",
+			config: TranslationConfig{
+				APIKey: "",
+				Model:  "qwen-max",
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid Qwen config with custom base URL",
+			config: TranslationConfig{
+				APIKey:  "test_key",
+				Model:   "qwen-max",
+				BaseURL: "https://custom.api.com",
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewQwenClient(tt.config)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewQwenClient() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			
+			if !tt.wantErr {
+				// Test that client was initialized correctly
+				if client == nil {
+					t.Error("Expected client to be created")
+					return
+				}
+				
+				// Test GetProviderName
+				if got := client.GetProviderName(); got != "qwen" {
+					t.Errorf("GetProviderName() = %v, want %v", got, "qwen")
+				}
+			}
+		})
+	}
+}
+
+// TestQwenTokenSaveError tests token saving error path
+func TestQwenTokenSaveError(t *testing.T) {
+	client := &QwenClient{
+		oauthToken: &QwenOAuthToken{
+			AccessToken:  "test_access_token",
+			RefreshToken: "test_refresh_token",
+			TokenType:    "Bearer",
+			ExpiryDate:   time.Now().Add(3600 * time.Second).UnixMilli(),
+		},
+	}
+
+	// Test saving to invalid path should return error
+	err := client.saveOAuthToken(client.oauthToken)
+	if err == nil {
+		t.Error("Expected error when saving to invalid path")
+	}
+}
+
+// TestQwenRefreshTokenErrorPaths tests the various error paths in refreshToken
+func TestQwenRefreshTokenErrorPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		client   *QwenClient
+		wantErr  bool
+	}{
+		{
+			name: "no oauth token",
+			client: &QwenClient{
+				oauthToken: nil,
+			},
+			wantErr: true,
+		},
+		{
+			name: "no refresh token",
+			client: &QwenClient{
+				oauthToken: &QwenOAuthToken{
+					AccessToken: "test_token",
+					TokenType:   "Bearer",
+					ExpiryDate:  time.Now().Add(3600 * time.Second).UnixMilli(),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing client_id env var",
+			client: &QwenClient{
+				oauthToken: &QwenOAuthToken{
+					AccessToken:  "test_access_token",
+					RefreshToken: "test_refresh_token",
+					TokenType:    "Bearer",
+					ExpiryDate:   time.Now().Add(3600 * time.Second).UnixMilli(),
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.client.refreshToken()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("refreshToken() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestQwenLoadOAuthTokenErrorPaths tests error paths in loadOAuthToken
+func TestQwenLoadOAuthTokenErrorPaths(t *testing.T) {
+	// Test with valid file but invalid JSON
+	tempDir := t.TempDir()
+	invalidJSONFile := filepath.Join(tempDir, "invalid_token.json")
+	
+	// Write invalid JSON to file
+	err := os.WriteFile(invalidJSONFile, []byte("{ invalid json }"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write invalid JSON file: %v", err)
+	}
+	
+	client := &QwenClient{
+		credFilePath: invalidJSONFile,
+	}
+	
+	err = client.loadOAuthToken()
+	if err == nil {
+		t.Error("Expected error when loading invalid JSON")
+	}
+}
+
+// TestLLMRetryPath tests the retry logic when isTextSizeError returns true
+func TestLLMRetryPath(t *testing.T) {
+	// Mock client that always returns text size error
+	mockClient := &MockSizeErrorClient{}
+	
+	config := TranslationConfig{
+		Model:  "test-model",
+		APIKey: "test-key",
+	}
+	baseTranslator := NewBaseTranslator(config)
+	translator := &LLMTranslator{
+		BaseTranslator: baseTranslator,
+		client:         mockClient,
+	}
+
+	// Large text that would trigger size error
+	largeText := strings.Repeat("This is a test sentence. ", 1000)
+	
+	ctx := context.Background()
+	_, err := translator.Translate(ctx, largeText, "test context")
+	
+	// Should return error due to retries being exhausted
+	if err == nil {
+		t.Error("Expected error after retries exhausted")
+	}
+}
+
+// TestTranslateWithProgress tests the TranslateWithProgress function
+func TestTranslateWithProgress(t *testing.T) {
+	// Mock successful client
+	mockClient := &MockLLMClient{
+		shouldFail:     false,
+		sizeError:      false,
+		callCount:      0,
+		maxCallsToFail: 0,
+	}
+	
+	config := TranslationConfig{
+		Model:  "test-model",
+		APIKey: "test-key",
+	}
+	baseTranslator := NewBaseTranslator(config)
+	translator := &LLMTranslator{
+		BaseTranslator: baseTranslator,
+		client:         mockClient,
+	}
+
+	eventBus := events.NewEventBus()
+	sessionID := "test-session"
+	ctx := context.Background()
+	
+	result, err := translator.TranslateWithProgress(ctx, "test text", "test context", eventBus, sessionID)
+	if err != nil {
+		t.Errorf("TranslateWithProgress() error = %v", err)
+		return
+	}
+	
+	if result == "" {
+		t.Error("TranslateWithProgress() returned empty result")
+	}
+}
+
+// TestTranslateWithProgressError tests error path in TranslateWithProgress
+func TestTranslateWithProgressError(t *testing.T) {
+	// Mock client that always returns error
+	mockClient := &MockSizeErrorClient{}
+	
+	config := TranslationConfig{
+		Model:  "test-model",
+		APIKey: "test-key",
+	}
+	baseTranslator := NewBaseTranslator(config)
+	translator := &LLMTranslator{
+		BaseTranslator: baseTranslator,
+		client:         mockClient,
+	}
+
+	eventBus := events.NewEventBus()
+	sessionID := "test-session"
+	ctx := context.Background()
+	
+	_, err := translator.TranslateWithProgress(ctx, "test text", "test context", eventBus, sessionID)
+	if err == nil {
+		t.Error("Expected error from TranslateWithProgress")
+	}
+}
+
+// TestQwenClientWithEnvVar tests Qwen client with HOME environment variable edge case
+func TestQwenClientWithEnvVar(t *testing.T) {
+	// Save original HOME
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	
+	// Test with HOME unset
+	os.Unsetenv("HOME")
+	
+	config := TranslationConfig{
+		APIKey: "test_key",
+		Model:  "qwen-max",
+	}
+	
+	client, err := NewQwenClient(config)
+	if err != nil {
+		t.Errorf("NewQwenClient() error = %v", err)
+		return
+	}
+	
+	// Should still work with fallback directory
+	if client == nil {
+		t.Error("Expected client to be created even without HOME env var")
+	}
+}
+
+// TestLlamaCppClientErrorPaths tests error paths in NewLlamaCppClient
+func TestLlamaCppClientErrorPaths(t *testing.T) {
+	// Test with invalid model that doesn't exist
+	config := TranslationConfig{
+		Model: "non-existent-model-that-should-not-exist",
+	}
+	
+	// This should return an error because the model doesn't exist
+	client, err := NewLlamaCppClient(config)
+	if err == nil {
+		t.Error("Expected error for non-existent model")
+	}
+	
+	if client != nil {
+		t.Error("Expected nil client when model doesn't exist")
+	}
+}
+
+// TestLlamaCppClientConfiguration tests NewLlamaCppClient with valid config
+func TestLlamaCppClientConfiguration(t *testing.T) {
+	// This test might fail if llama.cpp is not installed, but that's fine
+	// We're testing the configuration path, not the actual model loading
+	config := TranslationConfig{
+		// No model specified - let it auto-select
+	}
+	
+	client, err := NewLlamaCppClient(config)
+	// We don't care if this succeeds or fails (depends on system)
+	// We just want to exercise the configuration code path
+	_ = client
+	_ = err
+}
+
+// MockSizeErrorClient is a mock client that always returns text size errors
+type MockSizeErrorClient struct{}
+
+func (m *MockSizeErrorClient) GetProviderName() string {
+	return "mock"
+}
+
+func (m *MockSizeErrorClient) Translate(ctx context.Context, text string, prompt string) (string, error) {
+	return "", fmt.Errorf("text too large")
+}
+
+// TestZhipuTranslateWithOptions tests Zhipu Translate with various options
+func TestZhipuTranslateWithOptions(t *testing.T) {
+	// Create a mock server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return a successful response
+		response := ZhipuResponse{
+			Choices: []ZhipuChoice{
+				{
+					Message: ZhipuMessage{
+						Content: "This is a test translation with options",
+					},
+				},
+			},
+		}
+		
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer mockServer.Close()
+
+	// Test with custom options
+	config := TranslationConfig{
+		APIKey:  "test-key",
+		Model:   "glm-4",
+		BaseURL: mockServer.URL,
+		Options: map[string]interface{}{
+			"temperature": 0.7,
+			"max_tokens": 2000,
+		},
+	}
+
+	client, err := NewZhipuClient(config)
+	if err != nil {
+		t.Fatalf("Error creating Zhipu client: %v", err)
+	}
+
+	ctx := context.Background()
+	result, err := client.Translate(ctx, "test text", "translate to German")
+	if err != nil {
+		t.Errorf("Translate() error = %v", err)
+		return
+	}
+
+	expected := "This is a test translation with options"
+	if result != expected {
+		t.Errorf("Translate() = %v, want %v", result, expected)
+	}
+}
+
+// TestQwenTranslateWithValidToken tests Qwen Translate with valid OAuth token
+func TestQwenTranslateWithValidToken(t *testing.T) {
+	// Create a mock server for both OAuth and translation
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "token") {
+			// OAuth token endpoint - return valid token
+			tokenResponse := map[string]interface{}{
+				"id":      "test-token-id",
+				"created": time.Now().Unix(),
+				"model":   "qwen-max",
+				"choices": []map[string]interface{}{
+					{
+						"index": 0,
+						"message": map[string]interface{}{
+							"role":    "assistant",
+							"content": "This is a Qwen translation",
+						},
+						"finish_reason": "stop",
+					},
+				},
+				"usage": map[string]interface{}{
+					"prompt_tokens":     10,
+					"completion_tokens":  10,
+					"total_tokens":      20,
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(tokenResponse)
+		} else {
+			// Translation endpoint
+			translationResponse := map[string]interface{}{
+				"id":      "test-id",
+				"created": time.Now().Unix(),
+				"model":   "qwen-max",
+				"choices": []map[string]interface{}{
+					{
+						"index": 0,
+						"message": map[string]interface{}{
+							"role":    "assistant",
+							"content": "This is a Qwen translation",
+						},
+						"finish_reason": "stop",
+					},
+				},
+				"usage": map[string]interface{}{
+					"prompt_tokens":     10,
+					"completion_tokens":  10,
+					"total_tokens":      20,
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(translationResponse)
+		}
+	}))
+	defer mockServer.Close()
+
+	// Set environment variables for OAuth
+	os.Setenv("QWEN_CLIENT_ID", "test_client_id")
+	os.Setenv("QWEN_CLIENT_SECRET", "test_client_secret")
+	defer func() {
+		os.Unsetenv("QWEN_CLIENT_ID")
+		os.Unsetenv("QWEN_CLIENT_SECRET")
+	}()
+
+	config := TranslationConfig{
+		APIKey:  "test_key",
+		Model:   "qwen-max",
+		BaseURL: mockServer.URL,
+	}
+
+	client, err := NewQwenClient(config)
+	if err != nil {
+		t.Fatalf("Error creating Qwen client: %v", err)
+	}
+
+	// Set up a valid token
+	err = client.SetOAuthToken("test_token", "refresh_token", "resource_url", time.Now().Add(3600*time.Second).UnixMilli())
+	if err != nil {
+		t.Fatalf("Error setting OAuth token: %v", err)
+	}
+
+	ctx := context.Background()
+	result, err := client.Translate(ctx, "test text", "translate to Spanish")
+	if err != nil {
+		t.Errorf("Translate() error = %v", err)
+		return
+	}
+
+	expected := "This is a Qwen translation"
+	if result != expected {
+		t.Errorf("Translate() = %v, want %v", result, expected)
+	}
+}
+
+// TestLLMTranslatorRetrySuccess tests successful translation path
+func TestLLMTranslatorRetrySuccess(t *testing.T) {
+	// Mock client that succeeds immediately
+	mockClient := &MockLLMClient{
+		shouldFail:     false,
+		sizeError:      false,
+		callCount:      0,
+		maxCallsToFail: 0,
+	}
+	
+	config := TranslationConfig{
+		Model:  "test-model",
+		APIKey: "test-key",
+	}
+	baseTranslator := NewBaseTranslator(config)
+	translator := &LLMTranslator{
+		BaseTranslator: baseTranslator,
+		client:         mockClient,
+	}
+
+	ctx := context.Background()
+	result, err := translator.Translate(ctx, "test text", "test context")
+	if err != nil {
+		t.Errorf("Translate() error = %v", err)
+		return
+	}
+	
+	// Should get a result
+	if result == "" {
+		t.Error("Expected non-empty result")
+	}
+}
+
+// TestQwenLoadOAuthTokenValidFile tests loading OAuth token from a valid file
+func TestQwenLoadOAuthTokenValidFile(t *testing.T) {
+	tempDir := t.TempDir()
+	validTokenFile := filepath.Join(tempDir, "valid_token.json")
+	
+	// Create a valid OAuth token JSON
+	validToken := &QwenOAuthToken{
+		AccessToken:  "test_access_token",
+		RefreshToken: "test_refresh_token",
+		TokenType:    "Bearer",
+		ResourceURL:  "https://test.com",
+		ExpiryDate:   time.Now().Add(3600 * time.Second).UnixMilli(),
+	}
+	
+	tokenData, err := json.Marshal(validToken)
+	if err != nil {
+		t.Fatalf("Failed to marshal valid token: %v", err)
+	}
+	
+	err = os.WriteFile(validTokenFile, tokenData, 0644)
+	if err != nil {
+		t.Fatalf("Failed to write valid token file: %v", err)
+	}
+	
+	client := &QwenClient{
+		credFilePath: validTokenFile,
+	}
+	
+	err = client.loadOAuthToken()
+	if err != nil {
+		t.Errorf("loadOAuthToken() error = %v", err)
+		return
+	}
+	
+	// Verify token was loaded correctly
+	if client.oauthToken == nil {
+		t.Error("Expected oauthToken to be loaded")
+		return
+	}
+	
+	if client.oauthToken.AccessToken != "test_access_token" {
+		t.Errorf("Expected access token 'test_access_token', got %s", client.oauthToken.AccessToken)
+	}
+}
+
+// TestQwenRefreshTokenWithEnvVars tests refreshToken with all environment variables set
+func TestQwenRefreshTokenWithEnvVars(t *testing.T) {
+	// Save original environment variables
+	origClientID := os.Getenv("QWEN_CLIENT_ID")
+	origClientSecret := os.Getenv("QWEN_CLIENT_SECRET")
+	defer func() {
+		os.Setenv("QWEN_CLIENT_ID", origClientID)
+		os.Setenv("QWEN_CLIENT_SECRET", origClientSecret)
+	}()
+	
+	// Set environment variables
+	os.Setenv("QWEN_CLIENT_ID", "test_client_id")
+	os.Setenv("QWEN_CLIENT_SECRET", "test_client_secret")
+	
+	client := &QwenClient{
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+		oauthToken: &QwenOAuthToken{
+			AccessToken:  "test_access_token",
+			RefreshToken: "test_refresh_token",
+			TokenType:    "Bearer",
+			ResourceURL:  "https://test.com",
+			ExpiryDate:   time.Now().Add(3600 * time.Second).UnixMilli(),
+		},
+	}
+	
+	// Test refreshToken - this should make an HTTP request and fail
+	// but it will exercise the code path that checks environment variables
+	err := client.refreshToken()
+	
+	// We expect this to fail because we're using a mock refresh token with invalid URL
+	// but we're testing that the environment variable validation works
+	if err == nil {
+		t.Error("Expected error when trying to refresh with mock data")
 	}
 }

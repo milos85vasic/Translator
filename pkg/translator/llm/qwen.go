@@ -70,6 +70,10 @@ type QwenUsage struct {
 
 // NewQwenClient creates a new Qwen client with OAuth support
 func NewQwenClient(config TranslationConfig) (*QwenClient, error) {
+	if config.APIKey == "" {
+		return nil, fmt.Errorf("API key is required for Qwen")
+	}
+	
 	credDir := os.Getenv("HOME")
 	if credDir == "" {
 		credDir = "."

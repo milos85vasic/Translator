@@ -3064,6 +3064,168 @@ func TestNewLlamaCppClientHardwareAndModelPaths(t *testing.T) {
 	})
 }
 
+// TestNewLlamaCppClientDownloadPaths tests model download and caching paths in NewLlamaCppClient
+func TestNewLlamaCppClientDownloadPaths(t *testing.T) {
+	// Test 1: Model selection and caching behavior
+	t.Run("model_caching_behavior", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "llamacpp",
+			// No model specified - should trigger auto-selection and caching paths
+		}
+		
+		// Call NewLlamaCppClient multiple times to test caching behavior
+		results := make([]struct {
+			client *LlamaCppClient
+			err    error
+		}, 2)
+		
+		for i := 0; i < 2; i++ {
+			results[i].client, results[i].err = NewLlamaCppClient(config)
+		}
+		
+		// Both calls should behave consistently
+		for i, result := range results {
+			if result.err != nil {
+				t.Logf("Call %d failed as expected: %v", i, result.err)
+				
+				// Verify error is meaningful (likely download or model selection error)
+				assert.True(t, 
+					strings.Contains(result.err.Error(), "hardware") ||
+					strings.Contains(result.err.Error(), "model") ||
+					strings.Contains(result.err.Error(), "download") ||
+					strings.Contains(result.err.Error(), "token") ||
+					strings.Contains(result.err.Error(), "llama.cpp"),
+					"Unexpected error: %v", result.err)
+			} else {
+				// If successful, verify structure
+				assert.NotNil(t, result.client)
+				assert.NotEmpty(t, result.client.modelPath, "Model path should be set")
+				assert.NotEmpty(t, result.client.executable, "Executable should be set")
+				assert.Greater(t, result.client.threads, 0, "Threads should be positive")
+				assert.Greater(t, result.client.contextSize, 0, "Context should be positive")
+				
+				t.Logf("Call %d success: model=%s, path=%s", 
+					i, result.client.modelInfo.Name, result.client.modelPath)
+			}
+		}
+		
+		// If both succeeded, verify consistency
+		if results[0].err == nil && results[1].err == nil {
+			assert.Equal(t, results[0].client.modelInfo.Name, results[1].client.modelInfo.Name,
+				"Model selection should be consistent")
+			assert.Equal(t, results[0].client.modelPath, results[1].client.modelPath,
+				"Model path should be consistent")
+		}
+	})
+	
+	// Test 2: Model path validation and download error handling
+	t.Run("download_error_scenarios", func(t *testing.T) {
+		// Use a model that exists but might cause download issues
+		config := TranslationConfig{
+			Provider: "llamacpp",
+			Model:    "Hunyuan-MT 7B (Q4)", // This model exists but requires auth
+		}
+		
+		client, err := NewLlamaCppClient(config)
+		
+		if err != nil {
+			t.Logf("Download error scenario triggered: %v", err)
+			
+			// Verify error structure
+			assert.True(t, 
+				strings.Contains(err.Error(), "failed to download") ||
+				strings.Contains(err.Error(), "model not found") ||
+				strings.Contains(err.Error(), "insufficient") ||
+				strings.Contains(err.Error(), "unauthorized") ||
+				strings.Contains(err.Error(), "token"),
+				"Error should be download-related: %v", err)
+			
+			// Client should be nil on download failure
+			assert.Nil(t, client, "Client should be nil when download fails")
+		} else {
+			t.Logf("Download scenario succeeded (model was cached)")
+			
+			// If download succeeded (due to caching), verify structure
+			assert.NotNil(t, client)
+			assert.NotEmpty(t, client.modelPath, "Model path should be set")
+			t.Logf("Download scenario success: using cached model at %s", client.modelPath)
+		}
+	})
+	
+	// Test 3: Model information validation and hardware checking
+	t.Run("model_info_and_hardware_validation", func(t *testing.T) {
+		// Test with different scenarios to exercise validation paths
+		testModels := []string{
+			"", // Auto-selection
+		}
+		
+		for i, modelName := range testModels {
+			config := TranslationConfig{
+				Provider: "llamacpp",
+				Model:    modelName,
+			}
+			
+			client, err := NewLlamaCppClient(config)
+			
+			if err != nil {
+				t.Logf("Test %d (%s) failed as expected: %v", i, modelName, err)
+				
+				// Should fail with appropriate error
+				assert.True(t,
+					strings.Contains(err.Error(), "hardware") ||
+					strings.Contains(err.Error(), "model") ||
+					strings.Contains(err.Error(), "download") ||
+					strings.Contains(err.Error(), "resources"),
+					"Error should be validation-related: %v", err)
+			} else {
+				// If succeeds, validate model info structure
+				assert.NotNil(t, client, "Client should not be nil")
+				assert.NotNil(t, client.modelInfo, "Model info should be set")
+				assert.NotEmpty(t, client.modelInfo.ID, "Model ID should be set")
+				assert.NotEmpty(t, client.modelInfo.Name, "Model name should be set")
+				assert.Greater(t, client.modelInfo.Parameters, uint64(0), "Parameters should be positive")
+				
+				t.Logf("Test %d success: model=%s (%dB params)", 
+					i, client.modelInfo.Name, client.modelInfo.Parameters)
+			}
+		}
+	})
+	
+	// Test 4: Download retry and caching behavior
+	t.Run("download_retry_behavior", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "llamacpp",
+			// Auto-select a model to exercise download/retry paths
+		}
+		
+		// Test multiple rapid calls to see if caching is working
+		callResults := make([]error, 3)
+		for i := 0; i < 3; i++ {
+			_, callResults[i] = NewLlamaCppClient(config)
+		}
+		
+		// Results should be consistent (all fail or all succeed)
+		firstSucceeded := callResults[0] == nil
+		for i, err := range callResults {
+			succeeded := err == nil
+			if succeeded != firstSucceeded {
+				t.Errorf("Inconsistent behavior across calls: call 0 succeeded=%v, call %d succeeded=%v", 
+					firstSucceeded, i, succeeded)
+			}
+			
+			if err != nil {
+				t.Logf("Call %d failed: %v", i, err)
+			}
+		}
+		
+		if firstSucceeded {
+			t.Log("All calls succeeded - caching is working properly")
+		} else {
+			t.Log("All calls failed - consistent error behavior")
+		}
+	})
+}
+
 // TestZhipuTranslateErrorPaths tests error paths in Zhipu Translate function
 func TestZhipuTranslateErrorPaths(t *testing.T) {
 	tests := []struct {

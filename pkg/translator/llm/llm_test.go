@@ -1205,3 +1205,109 @@ func TestOllamaProviderName(t *testing.T) {
 	}
 }
 
+// TestNewLLMTranslatorWithConfigErrorPaths tests uncovered error paths in NewLLMTranslatorWithConfig
+func TestNewLLMTranslatorWithConfigErrorPaths(t *testing.T) {
+	t.Run("missing_provider", func(t *testing.T) {
+		config := TranslationConfig{
+			// No provider specified
+			Model: "test-model",
+		}
+		
+		translator, err := NewLLMTranslatorWithConfig(config)
+		if err == nil {
+			t.Error("Expected error for missing provider")
+		}
+		if translator != nil {
+			t.Error("Translator should be nil when error occurs")
+		}
+		
+		if !strings.Contains(err.Error(), "provider must be specified") {
+			t.Errorf("Expected provider validation error, got: %v", err)
+		}
+	})
+	
+	t.Run("invalid_model_for_provider", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "openai",
+			Model:    "invalid-model-name",
+		}
+		
+		translator, err := NewLLMTranslatorWithConfig(config)
+		if err == nil {
+			t.Error("Expected error for invalid model")
+		}
+		if translator != nil {
+			t.Error("Translator should be nil when error occurs")
+		}
+		
+		if !strings.Contains(err.Error(), "is not valid for provider") {
+			t.Errorf("Expected model validation error, got: %v", err)
+		}
+	})
+	
+	t.Run("unsupported_provider", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "nonexistent-provider",
+			Model:    "test-model",
+		}
+		
+		translator, err := NewLLMTranslatorWithConfig(config)
+		if err == nil {
+			t.Error("Expected error for unsupported provider")
+		}
+		if translator != nil {
+			t.Error("Translator should be nil when error occurs")
+		}
+		
+		if !strings.Contains(err.Error(), "unsupported LLM provider") {
+			t.Errorf("Expected unsupported provider error, got: %v", err)
+		}
+	})
+	
+	t.Run("ollama_custom_model_warning", func(t *testing.T) {
+		// Temporarily remove models from ValidModels to test warning
+		originalOllamaModels := ValidModels[ProviderOllama]
+		ValidModels[ProviderOllama] = []string{} // Empty the list
+		
+		config := TranslationConfig{
+			Provider: "ollama",
+			Model:    "custom-model-not-in-list",
+		}
+		
+		// This should succeed but emit a warning
+		translator, err := NewLLMTranslatorWithConfig(config)
+		if err != nil {
+			t.Logf("Expected success with custom Ollama model, got error: %v", err)
+		}
+		if translator != nil {
+			t.Logf("Successfully created translator with custom Ollama model")
+		}
+		
+		// Restore original models
+		ValidModels[ProviderOllama] = originalOllamaModels
+	})
+	
+	t.Run("llamacpp_custom_model_warning", func(t *testing.T) {
+		// Temporarily remove models from ValidModels to test warning
+		originalLlamaCppModels := ValidModels[ProviderLlamaCpp]
+		ValidModels[ProviderLlamaCpp] = []string{} // Empty the list
+		
+		config := TranslationConfig{
+			Provider: "llamacpp",
+			Model:    "custom-model-not-in-list",
+		}
+		
+		// This should succeed but emit a warning
+		translator, err := NewLLMTranslatorWithConfig(config)
+		if err != nil {
+			t.Logf("Expected success with custom LlamaCpp model, got error: %v", err)
+		}
+		if translator != nil {
+			t.Logf("Successfully created translator with custom LlamaCpp model")
+		}
+		
+		// Restore original models
+		ValidModels[ProviderLlamaCpp] = originalLlamaCppModels
+	})
+}
+

@@ -364,7 +364,7 @@ digital.vasic.translator/pkg/translator/llm/ollama.go:38.19,40.3 1 1
 digital.vasic.translator/pkg/translator/llm/ollama.go:42.2,48.8 1 1
 digital.vasic.translator/pkg/translator/llm/ollama.go:52.49,54.2 1 1
 digital.vasic.translator/pkg/translator/llm/ollama.go:57.99,59.17 2 1
-digital.vasic.translator/pkg/translator/llm/ollama.go:59.17,61.3 1 0
+digital.vasic.translator/pkg/translator/llm/ollama.go:59.17,61.3 1 1
 digital.vasic.translator/pkg/translator/llm/ollama.go:63.2,70.16 3 1
 digital.vasic.translator/pkg/translator/llm/ollama.go:70.16,72.3 1 0
 digital.vasic.translator/pkg/translator/llm/ollama.go:74.2,75.16 2 1
@@ -379,7 +379,7 @@ digital.vasic.translator/pkg/translator/llm/ollama.go:96.2,97.56 2 1
 digital.vasic.translator/pkg/translator/llm/ollama.go:97.56,99.3 1 1
 digital.vasic.translator/pkg/translator/llm/ollama.go:101.2,101.31 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:60.71,61.25 1 1
-digital.vasic.translator/pkg/translator/llm/openai.go:61.25,63.3 1 0
+digital.vasic.translator/pkg/translator/llm/openai.go:61.25,63.3 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:66.2,66.24 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:66.24,69.59 2 1
 digital.vasic.translator/pkg/translator/llm/openai.go:69.59,71.4 1 1
@@ -400,12 +400,12 @@ digital.vasic.translator/pkg/translator/llm/openai.go:102.19,104.3 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:106.2,112.8 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:116.49,118.2 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:121.99,123.17 2 1
-digital.vasic.translator/pkg/translator/llm/openai.go:123.17,125.3 1 0
+digital.vasic.translator/pkg/translator/llm/openai.go:123.17,125.3 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:127.2,128.24 2 1
 digital.vasic.translator/pkg/translator/llm/openai.go:128.24,130.3 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:134.2,135.43 2 1
-digital.vasic.translator/pkg/translator/llm/openai.go:135.43,136.57 1 0
-digital.vasic.translator/pkg/translator/llm/openai.go:136.57,138.4 1 0
+digital.vasic.translator/pkg/translator/llm/openai.go:135.43,136.57 1 1
+digital.vasic.translator/pkg/translator/llm/openai.go:136.57,138.4 1 1
 digital.vasic.translator/pkg/translator/llm/openai.go:141.2,151.16 3 1
 digital.vasic.translator/pkg/translator/llm/openai.go:151.16,153.3 1 0
 digital.vasic.translator/pkg/translator/llm/openai.go:155.2,156.16 2 1
@@ -431,7 +431,7 @@ digital.vasic.translator/pkg/translator/llm/qwen.go:101.2,101.48 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:101.48,105.49 3 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:105.49,107.4 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:113.2,113.29 1 1
-digital.vasic.translator/pkg/translator/llm/qwen.go:113.29,116.3 1 0
+digital.vasic.translator/pkg/translator/llm/qwen.go:113.29,116.3 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:118.2,118.20 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:122.45,124.16 2 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:124.16,126.3 1 1
@@ -498,7 +498,7 @@ digital.vasic.translator/pkg/translator/llm/qwen.go:330.2,333.16 3 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:333.16,335.3 1 0
 digital.vasic.translator/pkg/translator/llm/qwen.go:337.2,337.38 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:337.38,339.72 1 1
-digital.vasic.translator/pkg/translator/llm/qwen.go:339.72,340.43 1 0
+digital.vasic.translator/pkg/translator/llm/qwen.go:339.72,340.43 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:340.43,343.5 1 0
 digital.vasic.translator/pkg/translator/llm/qwen.go:345.3,345.89 1 1
 digital.vasic.translator/pkg/translator/llm/qwen.go:348.2,349.56 2 1

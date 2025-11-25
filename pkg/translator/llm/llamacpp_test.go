@@ -393,6 +393,227 @@ func TestNewLlamaCppClientEdgeCases(t *testing.T) {
 	})
 }
 
+// TestNewLlamaCppClientDetailedErrorPaths tests specific error paths in NewLlamaCppClient
+func TestNewLlamaCppClientDetailedErrorPaths(t *testing.T) {
+	// This test focuses on specific error paths that can be tested without hardware dependencies
+	
+	t.Run("invalid_model_name", func(t *testing.T) {
+		// Test with clearly invalid model name
+		config := TranslationConfig{
+			Provider: "llamacpp",
+			Model:    "invalid-model-name-that-does-not-exist",
+		}
+
+		client, err := NewLlamaCppClient(config)
+		
+		// Should fail with model not found error
+		if err == nil {
+			t.Error("Expected error for invalid model name")
+		}
+		if client != nil {
+			t.Error("Client should be nil when error occurs")
+		}
+		if !strings.Contains(err.Error(), "model not found") {
+			t.Errorf("Expected 'model not found' error, got: %v", err)
+		}
+	})
+
+	t.Run("model_resources_insufficient", func(t *testing.T) {
+		// Test with a model that exists but might be too large
+		// Use a model name that might exist but be too large for system
+		config := TranslationConfig{
+			Provider: "llamacpp",
+			Model:    "70b-model", // Large model name that might trigger resource check
+		}
+
+		client, err := NewLlamaCppClient(config)
+		
+		// Either succeeds (if model doesn't exist) or fails with appropriate error
+		if err != nil {
+			// Check if it's the expected error types
+			if !strings.Contains(err.Error(), "model not found") &&
+			   !strings.Contains(err.Error(), "insufficient resources") &&
+			   !strings.Contains(err.Error(), "hardware detection failed") &&
+			   !strings.Contains(err.Error(), "llama.cpp not found") &&
+			   !strings.Contains(err.Error(), "failed to download") {
+				t.Errorf("Unexpected error type: %v", err)
+			}
+		}
+		
+		// If client created, it should have proper structure
+		if err == nil && client != nil {
+			if client.config.Provider != "llamacpp" {
+				t.Errorf("Expected provider llamacpp, got: %s", client.config.Provider)
+			}
+		}
+	})
+
+	t.Run("config_validation", func(t *testing.T) {
+		// Test with minimal valid config to ensure basic validation works
+		config := TranslationConfig{
+			Provider: "llamacpp",
+		}
+
+		client, err := NewLlamaCppClient(config)
+		
+		// Should either succeed or fail with expected error
+		if err != nil {
+			// Check for acceptable error types
+			acceptableErrors := []string{
+				"hardware detection failed",
+				"llama.cpp not found", 
+				"failed to download",
+				"download failed",
+			}
+			
+			found := false
+			for _, acceptable := range acceptableErrors {
+				if strings.Contains(err.Error(), acceptable) {
+					found = true
+					break
+				}
+			}
+			
+			if !found {
+				t.Errorf("Unexpected error type: %v", err)
+			}
+		} else if client == nil {
+			t.Error("Client should not be nil when no error occurs")
+		}
+	})
+}
+
+// TestLlamaCppClientConfigurationValidation tests configuration validation in NewLlamaCppClient
+func TestLlamaCppClientConfigurationValidation(t *testing.T) {
+	t.Run("provider_configuration_preservation", func(t *testing.T) {
+		// Test that provider config is properly preserved
+		config := TranslationConfig{
+			Provider: "llamacpp",
+			Model:    "", // Empty to trigger auto-selection
+		}
+
+		client, err := NewLlamaCppClient(config)
+		
+		// Handle expected errors due to hardware/download dependencies
+		if err != nil {
+			// Acceptable errors for this environment
+			if !strings.Contains(err.Error(), "hardware detection failed") &&
+			   !strings.Contains(err.Error(), "llama.cpp not found") &&
+			   !strings.Contains(err.Error(), "failed to download") {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			return
+		}
+		
+		// If client created, verify config preservation
+		if client.config.Provider != "llamacpp" {
+			t.Errorf("Expected provider llamacpp, got: %s", client.config.Provider)
+		}
+		
+		if client.threads < 1 {
+			t.Errorf("Expected at least 1 thread, got: %d", client.threads)
+		}
+		
+		if client.contextSize < 512 {
+			t.Errorf("Expected reasonable context size, got: %d", client.contextSize)
+		}
+	})
+}
+
+// TestLlamaCppClientStructuralValidation tests edge cases in NewLlamaCppClient
+func TestLlamaCppClientStructuralValidation(t *testing.T) {
+	t.Run("empty_provider_config", func(t *testing.T) {
+		// Test with empty provider config
+		config := TranslationConfig{
+			Provider: "llamacpp",
+			Model:    "", // Empty to trigger auto-selection
+		}
+
+		client, err := NewLlamaCppClient(config)
+		
+		// Handle expected errors due to hardware/download dependencies
+		if err != nil {
+			// Acceptable errors for this environment
+			if !strings.Contains(err.Error(), "hardware detection failed") &&
+			   !strings.Contains(err.Error(), "llama.cpp not found") &&
+			   !strings.Contains(err.Error(), "failed to download") {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			return
+		}
+		
+		// If client created, verify it has valid structure
+		if client == nil {
+			t.Error("Client should not be nil when err is nil")
+		} else {
+			if client.config.Provider != "llamacpp" {
+				t.Errorf("Expected provider llamacpp, got: %s", client.config.Provider)
+			}
+			
+			if client.hardwareCaps == nil {
+				t.Error("Hardware capabilities should be set")
+			}
+			
+			if client.modelInfo == nil {
+				t.Error("Model info should be set")
+			}
+			
+			if client.executable == "" {
+				t.Error("Executable path should be set")
+			}
+		}
+	})
+
+	t.Run("client_structure_validation", func(t *testing.T) {
+		// Test that created client has proper structure
+		config := TranslationConfig{
+			Provider: "llamacpp",
+		}
+
+		client, err := NewLlamaCppClient(config)
+		
+		// Handle expected errors due to hardware/download dependencies
+		if err != nil {
+			// Acceptable errors for this environment
+			if !strings.Contains(err.Error(), "hardware detection failed") &&
+			   !strings.Contains(err.Error(), "llama.cpp not found") &&
+			   !strings.Contains(err.Error(), "failed to download") {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			return
+		}
+		
+		// Verify all required fields are properly set
+		if client == nil {
+			t.Error("Client should not be nil when err is nil")
+		} else {
+			if client.config.Provider != "llamacpp" {
+				t.Errorf("Expected provider llamacpp, got: %s", client.config.Provider)
+			}
+			
+			if client.hardwareCaps == nil {
+				t.Error("Hardware capabilities should be initialized")
+			}
+			
+			if client.modelInfo == nil {
+				t.Error("Model info should be set")
+			}
+			
+			if client.executable == "" {
+				t.Error("Executable path should be set")
+			}
+			
+			if client.threads < 1 {
+				t.Errorf("Thread configuration should be valid, got: %d", client.threads)
+			}
+			
+			if client.contextSize < 512 {
+				t.Errorf("Context size should be reasonable, got: %d", client.contextSize)
+			}
+		}
+	})
+}
+
 // TestGetProviderName tests provider name
 func TestGetProviderName(t *testing.T) {
 	client := &LlamaCppClient{}

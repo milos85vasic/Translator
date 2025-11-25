@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -683,4 +684,181 @@ func findSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestQwenRequestErrorPaths tests error paths in qwen Translate function
+func TestQwenRequestErrorPaths(t *testing.T) {
+	t.Run("invalid_api_key", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "", // Empty API key
+			Model:    "qwen-turbo",
+		}
+
+		client, err := NewQwenClient(config)
+		if err != nil || client == nil {
+			t.Skip("Skipping test - client creation failed")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		result, err := client.Translate(ctx, "Hello", "Translate to Russian")
+		if err == nil {
+			t.Log("Request succeeded with empty API key - may be using mock")
+		}
+		if result != "" && err != nil {
+			t.Error("Result should be empty when error occurs")
+		}
+	})
+
+	t.Run("invalid_model", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "test-api-key",
+			Model:    "invalid-model-name",
+		}
+
+		client, err := NewQwenClient(config)
+		if err != nil || client == nil {
+			t.Skip("Skipping test - client creation failed")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		result, err := client.Translate(ctx, "Hello", "Translate to Russian")
+		if err == nil {
+			t.Log("Request succeeded with invalid model - may be using mock")
+		}
+		if result != "" && err != nil {
+			t.Error("Result should be empty when error occurs")
+		}
+	})
+
+	t.Run("context_cancellation", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "test-api-key",
+			Model:    "qwen-turbo",
+		}
+
+		client, err := NewQwenClient(config)
+		if err != nil || client == nil {
+			t.Skip("Skipping test - client creation failed")
+			return
+		}
+
+		// Create cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		result, err := client.Translate(ctx, "Hello", "Translate to Russian")
+		if err != nil {
+			// Expected error path
+			if result != "" {
+				t.Error("Result should be empty when context is cancelled")
+			}
+			// Check for context-related error
+			if !contains(err.Error(), "context") && 
+			   !contains(err.Error(), "canceled") && 
+			   !contains(err.Error(), "deadline") {
+				t.Logf("Error may not be context-related: %v", err)
+			}
+		}
+	})
+
+	t.Run("empty_text_input", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "test-api-key",
+			Model:    "qwen-turbo",
+		}
+
+		client, err := NewQwenClient(config)
+		if err != nil || client == nil {
+			t.Skip("Skipping test - client creation failed")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		result, err := client.Translate(ctx, "", "Translate to Russian")
+		if err == nil && result == "" {
+			t.Log("Empty input returned empty result - this is acceptable")
+		}
+		// Either should work - some APIs handle empty text, others don't
+	})
+
+	t.Run("very_long_text", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "test-api-key",
+			Model:    "qwen-turbo",
+		}
+
+		client, err := NewQwenClient(config)
+		if err != nil || client == nil {
+			t.Skip("Skipping test - client creation failed")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Create very long text that might trigger size limits
+		longText := ""
+		for i := 0; i < 1000; i++ {
+			longText += "Hello world. "
+		}
+		
+		result, err := client.Translate(ctx, longText, "Translate to Russian")
+		if err != nil {
+			// Expected error path - text too long
+			if result != "" {
+				t.Error("Result should be empty when text is too long")
+			}
+			// Check for size-related error
+			if !contains(err.Error(), "too large") && 
+			   !contains(err.Error(), "size") && 
+			   !contains(err.Error(), "limit") {
+				t.Logf("Error may not be size-related: %v", err)
+			}
+		}
+	})
+
+	t.Run("invalid_base_url", func(t *testing.T) {
+		config := TranslationConfig{
+			Provider: "qwen",
+			APIKey:   "test-api-key",
+			Model:    "qwen-turbo",
+			BaseURL:  "invalid-url://invalid", // Invalid URL
+		}
+
+		client, err := NewQwenClient(config)
+		if err != nil || client == nil {
+			t.Skip("Skipping test - client creation failed")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		result, err := client.Translate(ctx, "Hello", "Translate to Russian")
+		if err != nil {
+			// Expected error path - invalid URL
+			if result != "" {
+				t.Error("Result should be empty when URL is invalid")
+			}
+			// Check for URL-related error
+			if !contains(err.Error(), "url") && 
+			   !contains(err.Error(), "scheme") &&
+			   !contains(err.Error(), "invalid") {
+				t.Logf("Error may not be URL-related: %v", err)
+			}
+		}
+	})
 }

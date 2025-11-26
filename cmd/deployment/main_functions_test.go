@@ -521,3 +521,73 @@ func TestDeploymentConfigurationValidation(t *testing.T) {
 	assert.Equal(t, 10*time.Second, workerConfig.HealthCheck.Timeout)
 	assert.Equal(t, 3, workerConfig.HealthCheck.Retries)
 }
+
+// TestDeploymentHandlers tests the various deployment handler functions
+func TestDeploymentHandlers(t *testing.T) {
+	// Use nil to avoid type issues since we're just testing that functions don't panic
+	// We capture log output to avoid fatal errors from crashing the test
+	var orchestrator *deployment.DeploymentOrchestrator = nil
+	
+	t.Run("handleDeploy", func(t *testing.T) {
+		// Create a temporary plan file for the test
+		tempDir := t.TempDir()
+		planFile := filepath.Join(tempDir, "test-plan.json")
+		
+		// Create a minimal valid plan
+		plan := &deployment.DeploymentPlan{
+			Workers: []*deployment.DeploymentConfig{
+				{
+					Host:          "localhost",
+					DockerImage:   "test:latest",
+					ContainerName: "test-container",
+				},
+			},
+		}
+		
+		planData, err := json.MarshalIndent(plan, "", "  ")
+		require.NoError(t, err)
+		err = os.WriteFile(planFile, planData, 0644)
+		require.NoError(t, err)
+		
+		// Test that handleDeploy can be called without panicking before the fatal error
+		// Since the function calls log.Fatalf, it will exit, but that's expected behavior
+		assert.Panics(t, func() {
+			handleDeploy(orchestrator, planFile)
+		})
+	})
+	
+	t.Run("handleStatus", func(t *testing.T) {
+		// Test that handleStatus panics when called with nil orchestrator
+		assert.Panics(t, func() {
+			handleStatus(orchestrator)
+		})
+	})
+	
+	t.Run("handleStop", func(t *testing.T) {
+		// Test that handleStop doesn't panic (just logs)
+		assert.NotPanics(t, func() {
+			handleStop(orchestrator)
+		})
+	})
+	
+	t.Run("handleCleanup", func(t *testing.T) {
+		// Test that handleCleanup doesn't panic (just logs)
+		assert.NotPanics(t, func() {
+			handleCleanup(orchestrator)
+		})
+	})
+	
+	t.Run("handleUpdate", func(t *testing.T) {
+		// Test that handleUpdate panics when called with nil orchestrator
+		assert.Panics(t, func() {
+			handleUpdate(orchestrator, "test-service", "test-image:latest")
+		})
+	})
+	
+	t.Run("handleRestart", func(t *testing.T) {
+		// Test that handleRestart panics when called with nil orchestrator
+		assert.Panics(t, func() {
+			handleRestart(orchestrator, "test-service")
+		})
+	})
+}

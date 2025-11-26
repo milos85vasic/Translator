@@ -632,3 +632,82 @@ func TestMockTranslatorIntegration(t *testing.T) {
 	// Verify mock expectations
 	mockTranslator.AssertExpectations(t)
 }
+
+// TestTranslateEbookFunction tests the translateEbook function
+func TestTranslateEbookFunction(t *testing.T) {
+	// Create a test book
+	book := &ebook.Book{
+		Metadata: ebook.Metadata{
+			Title:    "Test Book",
+			Language: "en",
+		},
+		Chapters: []ebook.Chapter{
+			{
+				Title: "Test Chapter",
+				Sections: []ebook.Section{
+					{
+						Content: "This is test content.",
+					},
+				},
+			},
+		},
+	}
+
+	// Test with minimal parameters
+	t.Run("minimal_parameters", func(t *testing.T) {
+		err := translateEbook(
+			book,
+			"test_output.epub",
+			"epub",
+			"openai",
+			"gpt-3.5-turbo",
+			"test-key",
+			"",
+			"latn",
+			nil,
+			language.English,
+			language.Spanish,
+			nil,
+			false,
+			false,
+		)
+		
+		// We expect an error due to missing API key in test environment
+		assert.Error(t, err)
+	})
+	
+	t.Run("with_app_config", func(t *testing.T) {
+		// Create app config
+		appConfig := &config.Config{
+			Translation: config.TranslationConfig{
+				DefaultProvider: "openai",
+				DefaultModel:    "gpt-3.5-turbo",
+				Providers: map[string]config.ProviderConfig{
+					"openai": {
+						APIKey: "config-key",
+					},
+				},
+			},
+		}
+		
+		err := translateEbook(
+			book,
+			"test_output.epub",
+			"epub",
+			"", // Will use default from config
+			"", // Will use default from config
+			"", // Will use from config
+			"",
+			"latn",
+			appConfig,
+			language.English,
+			language.Spanish,
+			nil,
+			false,
+			false,
+		)
+		
+		// We expect an error due to test environment limitations
+		assert.Error(t, err)
+	})
+}

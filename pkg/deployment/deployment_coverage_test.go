@@ -3,6 +3,8 @@ package deployment
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -415,7 +417,7 @@ func TestFormatDuration_Docker(t *testing.T) {
 
 // TestAPICommunicationLogger_FormatDuration tests API logger formatDuration
 func TestAPICommunicationLogger_FormatDuration(t *testing.T) {
-	logger, err := NewAPICommunicationLogger("")
+	logger, err := NewAPICommunicationLogger(t.TempDir() + "/test.log")
 	require.NoError(t, err)
 	defer logger.Close()
 
@@ -442,7 +444,7 @@ func TestAPICommunicationLogger_FormatDuration(t *testing.T) {
 
 // TestAPICommunicationLogger_GetStatusText tests API logger getStatusText
 func TestAPICommunicationLogger_GetStatusText(t *testing.T) {
-	logger, err := NewAPICommunicationLogger("")
+	logger, err := NewAPICommunicationLogger(t.TempDir() + "/test.log")
 	require.NoError(t, err)
 	defer logger.Close()
 
@@ -484,5 +486,246 @@ func TestAPICommunicationLogger_GetStatusText(t *testing.T) {
 	t.Run("Unknown status code", func(t *testing.T) {
 		result := method.Call([]reflect.Value{reflect.ValueOf(999)})
 		assert.Equal(t, "", result[0].String())
+	})
+}
+
+func TestDockerOrchestrator_GetServiceStatus(t *testing.T) {
+	// Create a temporary directory for compose files
+	tempDir := t.TempDir()
+	
+	// Create a basic docker-compose.yml
+	composeContent := `version: '3.8'
+services:
+  test-service:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=test
+`
+	
+	composeFile := filepath.Join(tempDir, "docker-compose.yml")
+	err := os.WriteFile(composeFile, []byte(composeContent), 0644)
+	require.NoError(t, err)
+	
+	// Create orchestrator
+	eventBus := events.NewEventBus()
+	logger := &APICommunicationLogger{}
+	config := &DeploymentConfig{
+		Host:        "localhost",
+		Port:        8080,
+		User:        "testuser",
+		DockerImage:  "nginx:latest",
+	}
+	plan := &DeploymentPlan{
+		Main: config,
+		Workers: []*DeploymentConfig{
+			{
+				Host:       "localhost",
+				Port:       8081,
+				User:       "testuser",
+				DockerImage: "nginx:latest",
+			},
+		},
+	}
+	
+	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
+	require.NoError(t, err)
+	
+	t.Run("Get status for existing service", func(t *testing.T) {
+		// This will fail because docker-compose is not available, but it will test the code path
+		status, err := orchestrator.GetServiceStatus(context.Background(), "test-service")
+		// We expect an error since docker-compose is not installed/running
+		assert.Error(t, err)
+		assert.Empty(t, status)
+	})
+	
+	t.Run("Get status for non-existing service", func(t *testing.T) {
+		status, err := orchestrator.GetServiceStatus(context.Background(), "non-existing-service")
+		assert.Error(t, err)
+		assert.Empty(t, status)
+	})
+}
+
+func TestDockerOrchestrator_EmitEvent(t *testing.T) {
+	// Create a temporary directory
+	tempDir := t.TempDir()
+	
+	// Create event bus to capture events
+	eventBus := events.NewEventBus()
+	var receivedEvent events.Event
+	
+	// Subscribe to events
+	eventBus.Subscribe(func(e events.Event) {
+		receivedEvent = e
+	})
+	
+	// Create orchestrator
+	logger := &APICommunicationLogger{}
+	config := &DeploymentConfig{
+		Host:        "localhost",
+		Port:        8080,
+		User:        "testuser",
+		DockerImage:  "nginx:latest",
+	}
+	plan := &DeploymentPlan{
+		Main: config,
+		Workers: []*DeploymentConfig{},
+	}
+	
+	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
+	require.NoError(t, err)
+	
+	t.Run("Emit event with valid event bus", func(t *testing.T) {
+		testEvent := events.Event{
+			Type:      "test.event",
+			SessionID: "test-session",
+			Message:   "Test event message",
+		}
+		
+		// Use reflection to call the private emitEvent method
+		method := reflect.ValueOf(orchestrator).MethodByName("emitEvent")
+		if !method.IsValid() {
+			t.Skip("emitEvent method not found")
+			return
+		}
+		
+		method.Call([]reflect.Value{reflect.ValueOf(testEvent)})
+		
+		// Give some time for async event processing
+		time.Sleep(10 * time.Millisecond)
+		
+		// Check if event was received
+		assert.Equal(t, testEvent.Type, receivedEvent.Type)
+		assert.Equal(t, testEvent.SessionID, receivedEvent.SessionID)
+		assert.Equal(t, testEvent.Message, receivedEvent.Message)
+	})
+	
+	t.Run("Emit event with nil event bus", func(t *testing.T) {
+		// Create orchestrator with nil event bus
+		orchestratorNil, err := NewDockerOrchestrator(plan, nil, logger, tempDir)
+		require.NoError(t, err)
+		
+		testEvent := events.Event{
+			Type:      "test.event",
+			SessionID: "test-session",
+			Message:   "Test event message",
+		}
+		
+		// Use reflection to call the private emitEvent method
+		method := reflect.ValueOf(orchestratorNil).MethodByName("emitEvent")
+		if !method.IsValid() {
+			t.Skip("emitEvent method not found")
+			return
+		}
+		
+		// This should not panic even with nil event bus
+		assert.NotPanics(t, func() {
+			method.Call([]reflect.Value{reflect.ValueOf(testEvent)})
+		})
+	})
+}
+
+func TestDockerOrchestrator_Cleanup(t *testing.T) {
+	// Create a temporary directory with test files
+	tempDir := t.TempDir()
+	
+	// Create some test files
+	testFile1 := filepath.Join(tempDir, "test1.txt")
+	testFile2 := filepath.Join(tempDir, "test2.txt")
+	err := os.WriteFile(testFile1, []byte("test content 1"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(testFile2, []byte("test content 2"), 0644)
+	require.NoError(t, err)
+	
+	// Create orchestrator
+	eventBus := events.NewEventBus()
+	logger := &APICommunicationLogger{}
+	config := &DeploymentConfig{
+		Host:        "localhost",
+		Port:        8080,
+		User:        "testuser",
+		DockerImage:  "nginx:latest",
+	}
+	plan := &DeploymentPlan{
+		Main: config,
+		Workers: []*DeploymentConfig{},
+	}
+	
+	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
+	require.NoError(t, err)
+	
+	// Verify files exist before cleanup
+	_, err = os.Stat(testFile1)
+	assert.NoError(t, err)
+	_, err = os.Stat(testFile2)
+	assert.NoError(t, err)
+	
+	// Call cleanup
+	err = orchestrator.Cleanup()
+	assert.NoError(t, err)
+	
+	// Verify files are gone after cleanup
+	_, err = os.Stat(testFile1)
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(testFile2)
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestDockerOrchestrator_ScaleService(t *testing.T) {
+	// Create a temporary directory
+	tempDir := t.TempDir()
+	
+	// Create orchestrator
+	eventBus := events.NewEventBus()
+	logger := &APICommunicationLogger{}
+	config := &DeploymentConfig{
+		Host:        "localhost",
+		Port:        8080,
+		User:        "testuser",
+		DockerImage:  "nginx:latest",
+	}
+	plan := &DeploymentPlan{
+		Main: config,
+		Workers: []*DeploymentConfig{},
+	}
+	
+	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
+	require.NoError(t, err)
+	
+	t.Run("Scale service", func(t *testing.T) {
+		// This will fail because docker-compose is not available, but it will test the code path
+		err := orchestrator.ScaleService(context.Background(), "test-service", 3)
+		// We expect an error since docker-compose is not installed/running
+		assert.Error(t, err)
+	})
+}
+
+func TestDockerOrchestrator_StopDeployment(t *testing.T) {
+	// Create a temporary directory
+	tempDir := t.TempDir()
+	
+	// Create orchestrator
+	eventBus := events.NewEventBus()
+	logger := &APICommunicationLogger{}
+	config := &DeploymentConfig{
+		Host:        "localhost",
+		Port:        8080,
+		User:        "testuser",
+		DockerImage:  "nginx:latest",
+	}
+	plan := &DeploymentPlan{
+		Main: config,
+		Workers: []*DeploymentConfig{},
+	}
+	
+	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
+	require.NoError(t, err)
+	
+	t.Run("Stop deployment", func(t *testing.T) {
+		// This will fail because docker-compose is not available, but it will test the code path
+		err := orchestrator.StopDeployment(context.Background())
+		// We expect an error since docker-compose is not installed/running
+		assert.Error(t, err)
 	})
 }

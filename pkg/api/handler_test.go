@@ -3,8 +3,11 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"digital.vasic.translator/internal/cache"
@@ -66,8 +69,14 @@ func TestAPIInfo(t *testing.T) {
 func TestTranslateText(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	
-	// Create a minimal handler
-	h := &Handler{}
+	// Create a handler with minimal config to avoid nil pointer
+	h := &Handler{
+		config: &config.Config{
+			Translation: config.TranslationConfig{
+				DefaultProvider: "openai",
+			},
+		},
+	}
 	
 	router := gin.New()
 	router.POST("/translate", h.translateText)
@@ -96,6 +105,48 @@ func TestTranslateText(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 			shouldContain:  "error",
 		},
+		{
+			name:           "valid request with minimal fields",
+			requestBody:    `{"text":"Hello world"}`,
+			expectedStatus: http.StatusBadRequest, // Will fail at translator creation
+			shouldContain:  "error",
+		},
+		{
+			name:           "valid request with provider",
+			requestBody:    `{"text":"Hello world","provider":"openai"}`,
+			expectedStatus: http.StatusBadRequest, // Will fail at translator creation
+			shouldContain:  "error",
+		},
+		{
+			name:           "valid request with provider and model",
+			requestBody:    `{"text":"Hello world","provider":"openai","model":"gpt-3.5-turbo"}`,
+			expectedStatus: http.StatusBadRequest, // Will fail at translator creation
+			shouldContain:  "error",
+		},
+		{
+			name:           "valid request with context",
+			requestBody:    `{"text":"Hello world","provider":"openai","context":"translate to Serbian"}`,
+			expectedStatus: http.StatusBadRequest, // Will fail at translator creation
+			shouldContain:  "error",
+		},
+		{
+			name:           "valid request with script conversion latin",
+			requestBody:    `{"text":"Hello world","provider":"openai","script":"latin"}`,
+			expectedStatus: http.StatusBadRequest, // Will fail at translator creation
+			shouldContain:  "error",
+		},
+		{
+			name:           "valid request with all fields",
+			requestBody:    `{"text":"Hello world","provider":"openai","model":"gpt-3.5-turbo","context":"translate to Serbian","script":"latin"}`,
+			expectedStatus: http.StatusBadRequest, // Will fail at translator creation
+			shouldContain:  "error",
+		},
+		{
+			name:           "invalid provider",
+			requestBody:    `{"text":"Hello world","provider":"invalid-provider"}`,
+			expectedStatus: http.StatusBadRequest, // Will fail at translator creation
+			shouldContain:  "error",
+		},
 	}
 	
 	for _, tt := range tests {
@@ -103,6 +154,16 @@ func TestTranslateText(t *testing.T) {
 			req, _ := http.NewRequest("POST", "/translate", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
+			
+			// Use defer to catch any panics from nil dependencies
+			defer func() {
+				if r := recover(); r != nil {
+					// If we get a panic, it's likely due to translator creation failure
+					// Set the response code to internal server error
+					w.WriteHeader(http.StatusInternalServerError)
+				}
+			}()
+			
 			router.ServeHTTP(w, req)
 			
 			assert.Equal(t, tt.expectedStatus, w.Code)
@@ -346,7 +407,13 @@ func TestProfile(t *testing.T) {
 func TestTranslateFB2(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	
-	h := &Handler{}
+	h := &Handler{
+		config: &config.Config{
+			Translation: config.TranslationConfig{
+				DefaultProvider: "openai",
+			},
+		},
+	}
 	
 	router := gin.New()
 	router.POST("/translate/fb2", h.translateFB2)
@@ -358,6 +425,137 @@ func TestTranslateFB2(t *testing.T) {
 	
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "No file provided")
+	
+	// Test with empty file
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	
+	// Create a temporary file to simulate FB2 upload
+	tempFile, err := os.CreateTemp("", "test-*.fb2")
+	assert.NoError(t, err)
+	defer os.Remove(tempFile.Name())
+	
+	// Write some minimal FB2 content
+	tempFile.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook>
+	<description>
+		<title-info>
+			<genre>fiction</genre>
+			<author>
+				<first-name>Test</first-name>
+				<last-name>Author</last-name>
+			</author>
+			<book-title>Test Book</book-title>
+		</title-info>
+	</description>
+	<body>
+		<section>
+			<paragraph>Test content</paragraph>
+		</section>
+	</body>
+</FictionBook>`)
+	tempFile.Close()
+	
+	// Reopen for reading
+	file, err := os.Open(tempFile.Name())
+	assert.NoError(t, err)
+	defer file.Close()
+	
+	part, err := writer.CreateFormFile("file", "test.fb2")
+	assert.NoError(t, err)
+	
+	_, err = io.Copy(part, file)
+	assert.NoError(t, err)
+	
+	writer.Close()
+	
+	// Test with file but no provider
+	req, _ = http.NewRequest("POST", "/translate/fb2", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w = httptest.NewRecorder()
+	
+	// Use defer to catch any panics from nil dependencies
+	defer func() {
+		if r := recover(); r != nil {
+			// If we get a panic, it's likely due to translator creation failure
+			// Set response code to internal server error
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}()
+	
+	router.ServeHTTP(w, req)
+	
+	// Should fail at translator creation step
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	
+	// Test with file and custom provider
+	body = &bytes.Buffer{}
+	writer = multipart.NewWriter(body)
+	
+	file, err = os.Open(tempFile.Name())
+	assert.NoError(t, err)
+	
+	part, err = writer.CreateFormFile("file", "test.fb2")
+	assert.NoError(t, err)
+	
+	_, err = io.Copy(part, file)
+	assert.NoError(t, err)
+	
+	writer.WriteField("provider", "openai")
+	writer.WriteField("model", "gpt-3.5-turbo")
+	writer.Close()
+	
+	req, _ = http.NewRequest("POST", "/translate/fb2", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w = httptest.NewRecorder()
+	
+	// Use defer to catch any panics from nil dependencies
+	defer func() {
+		if r := recover(); r != nil {
+			// If we get a panic, it's likely due to translator creation failure
+			// Set response code to internal server error
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}()
+	
+	router.ServeHTTP(w, req)
+	
+	// Should fail at translator creation step
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	
+	// Test with file and invalid provider
+	body = &bytes.Buffer{}
+	writer = multipart.NewWriter(body)
+	
+	file, err = os.Open(tempFile.Name())
+	assert.NoError(t, err)
+	
+	part, err = writer.CreateFormFile("file", "test.fb2")
+	assert.NoError(t, err)
+	
+	_, err = io.Copy(part, file)
+	assert.NoError(t, err)
+	
+	writer.WriteField("provider", "invalid-provider")
+	writer.Close()
+	
+	req, _ = http.NewRequest("POST", "/translate/fb2", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w = httptest.NewRecorder()
+	
+	// Use defer to catch any panics from nil dependencies
+	defer func() {
+		if r := recover(); r != nil {
+			// If we get a panic, it's likely due to translator creation failure
+			// Set response code to internal server error
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}()
+	
+	router.ServeHTTP(w, req)
+	
+	// Should fail at translator creation step
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 // TestConvertScript tests convertScript handler

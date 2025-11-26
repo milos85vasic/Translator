@@ -448,3 +448,121 @@ func TestHandleTranslateStringHandler(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
+
+// TestAuthMiddleware_Comprehensive tests authentication middleware
+func TestAuthMiddleware_Comprehensive(t *testing.T) {
+	t.Run("No security config - should pass through", func(t *testing.T) {
+		config := ServerConfig{
+			Port:   8080,
+			Security: nil, // No security config
+		}
+
+		server := NewServer(config)
+		middleware := server.authMiddleware()
+
+		// Create test context
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request, _ = http.NewRequest("GET", "/test", nil)
+
+		// Call middleware
+		middleware(c)
+
+		// Should continue without authentication
+		assert.False(t, c.IsAborted(), "Should not be aborted when no security config")
+	})
+
+	t.Run("Security disabled - should pass through", func(t *testing.T) {
+		config := ServerConfig{
+			Port: 8080,
+			Security: &SecurityConfig{
+				RequireAuth: false, // Authentication disabled
+			},
+		}
+
+		server := NewServer(config)
+		middleware := server.authMiddleware()
+
+		// Create test context
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request, _ = http.NewRequest("GET", "/test", nil)
+
+		// Call middleware
+		middleware(c)
+
+		// Should continue without authentication
+		assert.False(t, c.IsAborted(), "Should not be aborted when authentication disabled")
+	})
+
+	t.Run("Missing API key - should return 401", func(t *testing.T) {
+		config := ServerConfig{
+			Port: 8080,
+			Security: &SecurityConfig{
+				APIKey:      "test-key",
+				RequireAuth: true, // Authentication enabled
+			},
+		}
+
+		server := NewServer(config)
+		middleware := server.authMiddleware()
+
+		// Create test context without API key
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request, _ = http.NewRequest("GET", "/test", nil)
+
+		// Call middleware
+		middleware(c)
+
+		// Should be aborted with 401
+		assert.True(t, c.IsAborted(), "Should be aborted when API key missing")
+		assert.Equal(t, http.StatusUnauthorized, c.Writer.Status(), "Should return 401 when API key missing")
+	})
+
+	t.Run("Invalid API key - should return 401", func(t *testing.T) {
+		config := ServerConfig{
+			Port: 8080,
+			Security: &SecurityConfig{
+				APIKey:      "correct-key",
+				RequireAuth: true, // Authentication enabled
+			},
+		}
+
+		server := NewServer(config)
+		middleware := server.authMiddleware()
+
+		// Create test context with wrong API key
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request, _ = http.NewRequest("GET", "/test", nil)
+		c.Request.Header.Set("X-API-Key", "wrong-key")
+
+		// Call middleware
+		middleware(c)
+
+		// Should be aborted with 401
+		assert.True(t, c.IsAborted(), "Should be aborted when API key is wrong")
+		assert.Equal(t, http.StatusUnauthorized, c.Writer.Status(), "Should return 401 when API key is wrong")
+	})
+
+	t.Run("Valid API key - should pass through", func(t *testing.T) {
+		config := ServerConfig{
+			Port: 8080,
+			Security: &SecurityConfig{
+				APIKey:      "correct-key",
+				RequireAuth: true, // Authentication enabled
+			},
+		}
+
+		server := NewServer(config)
+		middleware := server.authMiddleware()
+
+		// Create test context with correct API key
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request, _ = http.NewRequest("GET", "/test", nil)
+		c.Request.Header.Set("X-API-Key", "correct-key")
+
+		// Call middleware
+		middleware(c)
+
+		// Should continue without being aborted
+		assert.False(t, c.IsAborted(), "Should not be aborted when API key is correct")
+	})
+}

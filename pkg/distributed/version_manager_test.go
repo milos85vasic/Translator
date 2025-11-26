@@ -27,12 +27,12 @@ func TestVersionManager_CheckWorkerVersion(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/version" {
 			version := VersionInfo{
-				CodebaseVersion: "dev-80d1c90", // Match the current local version
+				CodebaseVersion: "dev-e87fef1", // Match the current local version
 				BuildTime:       "2024-01-01T00:00:00Z",
 				GitCommit:       "abc123",
 				GoVersion:       "go1.21.0",
 				Components: map[string]string{
-					"translator":  "dev-80d1c90",
+					"translator":  "dev-e87fef1",
 					"api":         "1.0.0",
 					"distributed": "1.0.0",
 				},
@@ -75,8 +75,8 @@ func TestVersionManager_CheckWorkerVersion(t *testing.T) {
 	}
 
 	// Verify version was updated
-	if service.Version.CodebaseVersion != "dev-80d1c90" {
-		t.Errorf("Expected version dev-80d1c90, got %s", service.Version.CodebaseVersion)
+	if service.Version.CodebaseVersion != "dev-e87fef1" {
+		t.Errorf("Expected version dev-e87fef1, got %s", service.Version.CodebaseVersion)
 	}
 }
 
@@ -136,12 +136,12 @@ func TestVersionManager_ValidateWorkerForWork(t *testing.T) {
 			w.Write([]byte(`{"status":"healthy"}`))
 		} else if r.URL.Path == "/api/v1/version" {
 			version := VersionInfo{
-				CodebaseVersion: "dev-80d1c90",
+				CodebaseVersion: "dev-e87fef1",
 				BuildTime:       "2024-01-01T00:00:00Z",
 				GitCommit:       "abc123",
 				GoVersion:       "go1.21.0",
 				Components: map[string]string{
-					"translator":  "dev-80d1c90",
+					"translator":  "dev-e87fef1",
 					"api":         "1.0.0",
 					"distributed": "1.0.0",
 				},
@@ -169,9 +169,9 @@ func TestVersionManager_ValidateWorkerForWork(t *testing.T) {
 		Port:     port,
 		Protocol: "https",
 		Version: VersionInfo{
-			CodebaseVersion: "dev-80d1c90",
+			CodebaseVersion: "dev-e87fef1",
 			Components: map[string]string{
-				"translator":  "dev-80d1c90",
+				"translator":  "dev-e87fef1",
 				"api":         "1.0.0",
 				"distributed": "1.0.0",
 			},
@@ -841,9 +841,9 @@ func TestVersionManager_ValidateWorkerForWork_HealthCheckFailure(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		} else if r.URL.Path == "/api/v1/version" {
 			version := VersionInfo{
-				CodebaseVersion: "dev-80d1c90",
+				CodebaseVersion: "dev-e87fef1",
 				Components: map[string]string{
-					"translator":  "dev-80d1c90",
+					"translator":  "dev-e87fef1",
 					"api":         "1.0.0",
 					"distributed": "1.0.0",
 				},

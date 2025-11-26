@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .status-pending { @apply bg-yellow-100 text-yellow-800; }
+        .status-running { @apply bg-blue-100 text-blue-800; }
+        .status-completed { @apply bg-green-100 text-green-800; }
+        .status-failed { @apply bg-red-100 text-red-800; }
+        .status-cancelled { @apply bg-gray-100 text-gray-800; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center">
+                        <h1 class="text-2xl font-bold text-gray-900">Translation Dashboard</h1>
+                        <span class="ml-4 px-2 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800">v3.0.0</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center">
+                            <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                            <span class="text-sm text-gray-600">Connected</span>
+                        </div>
+                        <button onclick="showNewTranslationModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                            New Translation
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-indigo-500 rounded-md">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Total Sessions</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="total-sessions">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-green-500 rounded-md">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Completed</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="completed-sessions">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-blue-500 rounded-md">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Running</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="running-sessions">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-red-500 rounded-md">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Failed</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="failed-sessions">0</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Sessions -->
+            <div class="bg-white rounded-lg shadow mb-8">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">Active Sessions</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Session ID</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200" id="sessions-tbody">
+                            <!-- Sessions will be populated here -->
+                        </tbody>
+                    </table>
+                    <div id="no-sessions" class="px-6 py-12 text-center text-gray-500">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <h3 class="mt-2 text-sm font-medium text-gray-900">No active sessions</h3>
+                        <p class="mt-1 text-sm text-gray-500">Get started by creating a new translation job.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session Details -->
+            <div id="session-details" class="bg-white rounded-lg shadow hidden">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">Session Details</h2>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 mb-2">Progress</h3>
+                            <div class="bg-gray-200 rounded-full h-4">
+                                <div id="progress-bar" class="bg-indigo-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                            <p id="progress-text" class="text-sm text-gray-600 mt-2">0%</p>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500 mb-2">Current Step</h3>
+                            <p id="current-step" class="text-lg font-medium text-gray-900">-</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6">
+                        <h3 class="text-sm font-medium text-gray-500 mb-4">Translation Steps</h3>
+                        <div id="steps-container" class="space-y-4">
+                            <!-- Steps will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6">
+                        <h3 class="text-sm font-medium text-gray-500 mb-4">Generated Files</h3>
+                        <div id="files-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Files will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- New Translation Modal -->
+    <div id="new-translation-modal" class="fixed inset-0 bg-gray-500 bg-opacity-75 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="bg-white rounded-lg max-w-md w-full p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">New Translation</h3>
+                    <button onclick="hideNewTranslationModal()" class="text-gray-400 hover:text-gray-500">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <form onsubmit="startTranslation(event)">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Input File</label>
+                        <input type="file" id="input-file" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Provider</label>
+                        <select id="provider" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" onchange="updateProviderForm()">
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="ssh">SSH Worker</option>
+                            <option value="llamacpp">Local Llama.cpp</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Provider-specific options -->
+                    <div id="provider-options" class="mb-4">
+                        <!-- Will be populated based on provider selection -->
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Source Language</label>
+                        <select id="source-lang" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="ru">Russian</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Target Language</label>
+                        <select id="target-lang" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="sr">Serbian (Cyrillic)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="hideNewTranslationModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+                            Start Translation
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let sessions = new Map();
+        let websockets = new Map();
+        let selectedSessionId = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSessions();
+            setInterval(loadSessions, 5000); // Refresh every 5 seconds
+            updateProviderForm(); // Initialize provider form
+        });
+
+        // Session management
+        async function loadSessions() {
+            try {
+                const response = await fetch('/api/v1/translations');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateSessionsTable(data.data.translations);
+                    updateStats(data.data.translations);
+                }
+            } catch (error) {
+                console.error('Failed to load sessions:', error);
+            }
+        }
+
+        function updateSessionsTable(translations) {
+            const tbody = document.getElementById('sessions-tbody');
+            const noSessions = document.getElementById('no-sessions');
+            
+            if (!translations || translations.length === 0) {
+                tbody.innerHTML = '';
+                noSessions.style.display = 'block';
+                return;
+            }
+            
+            noSessions.style.display = 'none';
+            tbody.innerHTML = translations.map(session => createSessionRow(session)).join('');
+        }
+
+        function createSessionRow(session) {
+            const duration = calculateDuration(session.started_at);
+            const progress = Math.round(session.progress_percentage || 0);
+            
+            return `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <button onclick="selectSession('${session.session_id}')" class="text-indigo-600 hover:text-indigo-900">
+                            ${session.session_id}
+                        </button>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${getFileName(session.input_file)}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${getProviderDisplayName(session.provider)}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full status-${session.status}">
+                            ${session.status}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div class="w-24 bg-gray-200 rounded-full h-2">
+                            <div class="bg-indigo-600 h-2 rounded-full" style="width: ${progress}%"></div>
+                        </div>
+                        <span class="text-xs">${progress}%</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${duration}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button onclick="cancelSession('${session.session_id}')" class="text-red-600 hover:text-red-900 mr-3">Cancel</button>
+                        <button onclick="selectSession('${session.session_id}')" class="text-indigo-600 hover:text-indigo-900">View</button>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function updateStats(translations) {
+            const total = translations ? translations.length : 0;
+            const completed = translations ? translations.filter(s => s.status === 'completed').length : 0;
+            const running = translations ? translations.filter(s => s.status === 'running').length : 0;
+            const failed = translations ? translations.filter(s => s.status === 'failed').length : 0;
+            
+            document.getElementById('total-sessions').textContent = total;
+            document.getElementById('completed-sessions').textContent = completed;
+            document.getElementById('running-sessions').textContent = running;
+            document.getElementById('failed-sessions').textContent = failed;
+        }
+
+        function selectSession(sessionId) {
+            selectedSessionId = sessionId;
+            loadSessionDetails(sessionId);
+            connectWebSocket(sessionId);
+        }
+
+        async function loadSessionDetails(sessionId) {
+            try {
+                const response = await fetch(`/api/v1/translations/${sessionId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    displaySessionDetails(data.data);
+                }
+            } catch (error) {
+                console.error('Failed to load session details:', error);
+            }
+        }
+
+        function displaySessionDetails(session) {
+            const detailsDiv = document.getElementById('session-details');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const currentStep = document.getElementById('current-step');
+            const stepsContainer = document.getElementById('steps-container');
+            const filesContainer = document.getElementById('files-container');
+            
+            detailsDiv.classList.remove('hidden');
+            
+            // Update progress
+            const progress = Math.round(session.progress_percentage || 0);
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${progress}%`;
+            currentStep.textContent = session.current_step || 'Unknown';
+            
+            // Update steps
+            if (session.steps) {
+                stepsContainer.innerHTML = session.steps.map(step => createStepHTML(step)).join('');
+            }
+            
+            // Update files
+            if (session.files) {
+                filesContainer.innerHTML = session.files.map(file => createFileHTML(file)).join('');
+            }
+            
+            // Scroll to details
+            detailsDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function createStepHTML(step) {
+            const statusIcon = step.status === 'completed' ? 
+                '<svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>' :
+                step.status === 'failed' ?
+                '<svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>' :
+                '<svg class="w-5 h-5 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+            
+            return `
+                <div class="flex items-center p-4 border rounded-lg ${step.status === 'completed' ? 'border-green-200 bg-green-50' : step.status === 'failed' ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'}">
+                    ${statusIcon}
+                    <div class="ml-4">
+                        <h4 class="text-sm font-medium text-gray-900">${step.name}</h4>
+                        <p class="text-sm text-gray-600">${step.message || ''}</p>
+                        ${step.error_message ? `<p class="text-sm text-red-600">${step.error_message}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function createFileHTML(file) {
+            return `
+                <div class="border rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-sm font-medium text-gray-900">${getFileName(file.path)}</h4>
+                        <span class="text-xs text-gray-500">${formatFileSize(file.size)}</span>
+                    </div>
+                    <p class="text-xs text-gray-600 mb-2">${file.type}</p>
+                    <div class="flex items-center">
+                        ${file.verified ? 
+                            '<span class="text-xs text-green-600">✓ Verified</span>' :
+                            '<span class="text-xs text-yellow-600">⚠ Not verified</span>'
+                        }
+                    </div>
+                </div>
+            `;
+        }
+
+        function connectWebSocket(sessionId) {
+            // Close existing WebSocket for this session
+            if (websockets.has(sessionId)) {
+                websockets.get(sessionId).close();
+            }
+            
+            // Create new WebSocket connection
+            const ws = new WebSocket(`ws://localhost:8080/ws?session_id=${sessionId}`);
+            websockets.set(sessionId, ws);
+            
+            ws.onmessage = function(event) {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            };
+            
+            ws.onclose = function() {
+                console.log(`WebSocket closed for session ${sessionId}`);
+            };
+            
+            ws.onerror = function(error) {
+                console.error(`WebSocket error for session ${sessionId}:`, error);
+            };
+        }
+
+        function handleWebSocketMessage(message) {
+            if (message.session_id !== selectedSessionId) {
+                return;
+            }
+            
+            switch (message.type) {
+                case 'progress_update':
+                case 'step_completed':
+                case 'step_started':
+                    updateSessionProgress(message);
+                    break;
+            }
+        }
+
+        function updateSessionProgress(message) {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const currentStep = document.getElementById('current-step');
+            
+            if (message.data.progress_percentage !== undefined) {
+                const progress = Math.round(message.data.progress_percentage);
+                progressBar.style.width = `${progress}%`;
+                progressText.textContent = `${progress}%`;
+            }
+            
+            if (message.data.current_step) {
+                currentStep.textContent = message.data.current_step;
+            }
+        }
+
+        // Translation management
+        async function startTranslation(event) {
+            event.preventDefault();
+            
+            const sessionId = `tx-${Date.now()}`;
+            const formData = new FormData(event.target);
+            
+            // Get provider-specific configuration
+            const providerConfig = getProviderConfig();
+            
+            const translationRequest = {
+                session_id: sessionId,
+                input_file: document.getElementById('input-file').value,
+                output_file: '', // Will be auto-generated
+                source_lang: document.getElementById('source-lang').value,
+                target_lang: document.getElementById('target-lang').value,
+                script: 'cyrillic',
+                provider_config: providerConfig,
+                options: {
+                    enable_monitoring: true
+                }
+            };
+            
+            try {
+                const response = await fetch('/api/v1/translations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(translationRequest)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    hideNewTranslationModal();
+                    loadSessions(); // Refresh sessions list
+                    selectSession(sessionId); // Select and show new session
+                } else {
+                    alert(`Failed to start translation: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Failed to start translation:', error);
+                alert('Failed to start translation. Please try again.');
+            }
+        }
+
+        async function cancelSession(sessionId) {
+            if (!confirm('Are you sure you want to cancel this translation?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/v1/translations/${sessionId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ reason: 'User cancelled' })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadSessions(); // Refresh sessions list
+                } else {
+                    alert(`Failed to cancel translation: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Failed to cancel translation:', error);
+                alert('Failed to cancel translation. Please try again.');
+            }
+        }
+
+        // Modal management
+        function showNewTranslationModal() {
+            document.getElementById('new-translation-modal').classList.remove('hidden');
+        }
+
+        function hideNewTranslationModal() {
+            document.getElementById('new-translation-modal').classList.add('hidden');
+        }
+
+        // Provider form management
+        function updateProviderForm() {
+            const provider = document.getElementById('provider').value;
+            const providerOptionsDiv = document.getElementById('provider-options');
+            
+            let formHTML = '';
+            
+            switch (provider) {
+                case 'openai':
+                case 'anthropic':
+                    formHTML = `
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                            <input type="password" id="api-key" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Model</label>
+                            <select id="model" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="gpt-4">GPT-4</option>
+                                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                            </select>
+                        </div>
+                    `;
+                    break;
+                    
+                case 'ssh':
+                    formHTML = `
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">SSH Host</label>
+                                <input type="text" id="ssh-host" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="worker.example.com" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">SSH User</label>
+                                <input type="text" id="ssh-user" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="username" required>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">SSH Password</label>
+                            <input type="password" id="ssh-password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required>
+                        </div>
+                    `;
+                    break;
+                    
+                case 'llamacpp':
+                    formHTML = `
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Llama.cpp Binary Path</label>
+                            <input type="text" id="llama-binary" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" value="/usr/local/bin/llama.cpp" required>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Model Path</label>
+                            <input type="text" id="llama-model" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="/path/to/model.gguf" required>
+                        </div>
+                    `;
+                    break;
+            }
+            
+            providerOptionsDiv.innerHTML = formHTML;
+        }
+
+        function getProviderConfig() {
+            const provider = document.getElementById('provider').value;
+            const baseConfig = {
+                type: provider,
+                model: document.getElementById('model')?.value || '',
+                temperature: 0.3,
+                max_tokens: 4096,
+                timeout_seconds: 300
+            };
+            
+            switch (provider) {
+                case 'openai':
+                case 'anthropic':
+                    return {
+                        ...baseConfig,
+                        api_key: document.getElementById('api-key').value
+                    };
+                    
+                case 'ssh':
+                    return {
+                        ...baseConfig,
+                        ssh_host: document.getElementById('ssh-host').value,
+                        ssh_user: document.getElementById('ssh-user').value,
+                        ssh_password: document.getElementById('ssh-password').value,
+                        ssh_port: 22,
+                        remote_dir: '/tmp/translator'
+                    };
+                    
+                case 'llamacpp':
+                    return {
+                        ...baseConfig,
+                        llama_binary: document.getElementById('llama-binary').value,
+                        llama_model: document.getElementById('llama-model').value,
+                        context_size: 2048
+                    };
+                    
+                default:
+                    return baseConfig;
+            }
+        }
+
+        // Utility functions
+        function getFileName(path) {
+            return path.split('/').pop() || path;
+        }
+
+        function getProviderDisplayName(provider) {
+            const displayNames = {
+                'openai': 'OpenAI',
+                'anthropic': 'Anthropic',
+                'ssh': 'SSH Worker',
+                'llamacpp': 'Local Llama.cpp'
+            };
+            return displayNames[provider] || provider;
+        }
+
+        function calculateDuration(startTime) {
+            if (!startTime) return 'Unknown';
+            
+            const start = new Date(startTime);
+            const now = new Date();
+            const duration = now - start;
+            
+            const hours = Math.floor(duration / 3600000);
+            const minutes = Math.floor((duration % 3600000) / 60000);
+            const seconds = Math.floor((duration % 60000) / 1000);
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${seconds}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${seconds}s`;
+            } else {
+                return `${seconds}s`;
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>

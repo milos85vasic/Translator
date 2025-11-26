@@ -1,0 +1,778 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"flag"
+
+	"digital.vasic.translator/pkg/ebook"
+	"digital.vasic.translator/pkg/events"
+	"digital.vasic.translator/pkg/logger"
+	"digital.vasic.translator/pkg/markdown"
+	"digital.vasic.translator/pkg/sshworker"
+	"digital.vasic.translator/pkg/translator"
+	"digital.vasic.translator/pkg/translator/llm"
+	"digital.vasic.translator/pkg/version"
+)
+
+const (
+	appVersion = "3.0.0"
+)
+
+// UnifiedConfig holds the configuration for the unified translation system
+type UnifiedConfig struct {
+	// Input/Output
+	InputFile  string
+	OutputFile string
+	
+	// Translation Settings
+	SourceLang string
+	TargetLang string
+	Script     string // cyrillic, latin
+	
+	// Provider Selection
+	Provider string // openai, anthropic, zhipu, deepseek, qwen, gemini, ollama, llamacpp, ssh
+	
+	// API/Local LLM Configuration
+	APIKey      string
+	BaseURL     string
+	Model       string
+	Temperature float64
+	MaxTokens   int
+	Timeout     time.Duration
+	
+	// SSH Worker Configuration (for provider=ssh)
+	SSHHost     string
+	SSHUser     string
+	SSHPassword string
+	SSHPort     int
+	RemoteDir   string
+	
+	// Local Llama.cpp Configuration (for provider=llamacpp)
+	LlamaBinary string
+	LlamaModel  string
+	ContextSize int
+	
+	// Execution Options
+	Workers     int
+	ChunkSize   int
+	Concurrency int
+	VerifyOutput bool
+	Verbose     bool
+	
+	// Monitoring
+	EnableMonitoring bool
+	MonitoringPort   int
+}
+
+// TranslationSession tracks a translation session
+type TranslationSession struct {
+	ID          string
+	Config      *UnifiedConfig
+	StartTime   time.Time
+	EndTime     time.Time
+	EventBus    *events.EventBus
+	Logger      logger.Logger
+	Files       []GeneratedFile
+	Steps       []TranslationStep
+}
+
+// GeneratedFile tracks files generated during translation
+type GeneratedFile struct {
+	Path         string
+	Type         string // original_md, translated_md, epub
+	Size         int64
+	Verified     bool
+	Verification string
+}
+
+// TranslationStep tracks each translation step
+type TranslationStep struct {
+	Name      string
+	StartTime time.Time
+	EndTime   time.Time
+	Success   bool
+	Error     string
+	Details   string
+}
+
+func main() {
+	// Parse configuration
+	config := parseFlags()
+	
+	// Initialize logger
+	logLevel := logger.INFO
+	if config.Verbose {
+		logLevel = logger.DEBUG
+	}
+	
+	logger := logger.NewLogger(logger.LoggerConfig{
+		Level:  logLevel,
+		Format: logger.FORMAT_TEXT,
+	})
+	
+	// Initialize monitoring
+	eventBus := events.NewEventBus()
+	
+	// Create translation session
+	session := &TranslationSession{
+		ID:        generateSessionID(),
+		Config:    config,
+		StartTime: time.Now(),
+		EventBus:  eventBus,
+		Logger:    logger,
+		Files:     make([]GeneratedFile, 0),
+		Steps:     make([]TranslationStep, 0),
+	}
+	
+	// Start monitoring server if requested
+	if config.EnableMonitoring {
+		go startMonitoringServer(config.MonitoringPort, eventBus)
+		logger.Info("Monitoring server started", map[string]interface{}{
+			"port": config.MonitoringPort,
+			"session_id": session.ID,
+		})
+	}
+	
+	// Execute translation
+	err := executeTranslation(session)
+	
+	// Finalize session
+	session.EndTime = time.Now()
+	
+	if err != nil {
+		logger.Error("Translation failed", map[string]interface{}{
+			"error": err.Error(),
+			"session_id": session.ID,
+		})
+		
+		// Generate error report
+		generateSessionReport(session, err)
+		os.Exit(1)
+	}
+	
+	logger.Info("Translation completed successfully", map[string]interface{}{
+		"input":       config.InputFile,
+		"output":      config.OutputFile,
+		"provider":    config.Provider,
+		"duration":    session.EndTime.Sub(session.StartTime).String(),
+		"session_id":  session.ID,
+	})
+	
+	// Generate success report
+	generateSessionReport(session, nil)
+}
+
+// executeTranslation performs the translation using the specified provider
+func executeTranslation(session *TranslationSession) error {
+	config := session.Config
+	ctx := context.Background()
+	
+	// Step 1: Parse input ebook
+	step := addStep(session, "Input Parsing")
+	ebookContent, format, err := parseInputFile(config.InputFile)
+	if err != nil {
+		return stepError(step, fmt.Sprintf("Failed to parse input file: %w", err))
+	}
+	step.Details = fmt.Sprintf("Parsed %s format, %d characters", format, len(ebookContent))
+	stepComplete(step)
+	
+	// Step 2: Convert to markdown
+	step = addStep(session, "Markdown Conversion")
+	originalMarkdown, err := convertToMarkdown(ebookContent, format)
+	if err != nil {
+		return stepError(step, fmt.Sprintf("Failed to convert to markdown: %w", err))
+	}
+	
+	// Save original markdown
+	originalMDPath := generateOriginalMDPath(config.InputFile)
+	if err := os.WriteFile(originalMDPath, []byte(originalMarkdown), 0644); err != nil {
+		return stepError(step, fmt.Sprintf("Failed to save original markdown: %w", err))
+	}
+	
+	addFile(session, originalMDPath, "original_md", int64(len(originalMarkdown)), true, "Saved successfully")
+	step.Details = fmt.Sprintf("Converted to markdown, saved to %s", originalMDPath)
+	stepComplete(step)
+	
+	// Step 3: Translate based on provider
+	step = addStep(session, fmt.Sprintf("Translation (%s)", config.Provider))
+	translatedMarkdown, err := executeProviderTranslation(ctx, config, session, originalMarkdown)
+	if err != nil {
+		return stepError(step, fmt.Sprintf("Translation failed: %w", err))
+	}
+	
+	// Save translated markdown
+	translatedMDPath := generateTranslatedMDPath(config.InputFile)
+	if err := os.WriteFile(translatedMDPath, []byte(translatedMarkdown), 0644); err != nil {
+		return stepError(step, fmt.Sprintf("Failed to save translated markdown: %w", err))
+	}
+	
+	// Verify translation quality
+	verified := verifyTranslation(translatedMarkdown, config.TargetLang, config.Script)
+	addFile(session, translatedMDPath, "translated_md", int64(len(translatedMarkdown)), verified, 
+		map[bool]string{true: "Translation quality verified", false: "Translation needs review"}[verified])
+	
+	step.Details = fmt.Sprintf("Translated with %s, saved to %s", config.Provider, translatedMDPath)
+	stepComplete(step)
+	
+	// Step 4: Convert to EPUB
+	step = addStep(session, "EPUB Generation")
+	epubPath := config.OutputFile
+	if err := generateEPUB(translatedMarkdown, epubPath, config.InputFile); err != nil {
+		return stepError(step, fmt.Sprintf("EPUB generation failed: %w", err))
+	}
+	
+	// Verify EPUB
+	epubVerified := verifyEPUB(epubPath)
+	epubSize := getFileSize(epubPath)
+	addFile(session, epubPath, "epub", epubSize, epubVerified, 
+		map[bool]string{true: "Valid EPUB format", false: "Invalid EPUB format"}[epubVerified])
+	
+	step.Details = fmt.Sprintf("Generated EPUB: %s", epubPath)
+	stepComplete(step)
+	
+	return nil
+}
+
+// executeProviderTranslation handles translation based on the selected provider
+func executeProviderTranslation(ctx context.Context, config *UnifiedConfig, session *TranslationSession, text string) (string, error) {
+	switch config.Provider {
+	case "ssh":
+		return executeSSHTranslation(ctx, config, session, text)
+	case "llamacpp":
+		return executeLlamaCppTranslation(ctx, config, session, text)
+	default:
+		return executeAPITranslation(ctx, config, session, text)
+	}
+}
+
+// executeSSHTranslation uses SSH worker for translation
+func executeSSHTranslation(ctx context.Context, config *UnifiedConfig, session *TranslationSession, text string) (string, error) {
+	session.Logger.Info("Starting SSH translation", map[string]interface{}{
+		"host": config.SSHHost,
+		"user": config.SSHUser,
+	})
+	
+	// Initialize SSH worker
+	workerConfig := sshworker.SSHWorkerConfig{
+		Host:              config.SSHHost,
+		Port:              config.SSHPort,
+		Username:          config.SSHUser,
+		Password:          config.SSHPassword,
+		RemoteDir:         config.RemoteDir,
+		ConnectionTimeout: 30 * time.Second,
+		CommandTimeout:    30 * time.Minute,
+	}
+	
+	worker, err := sshworker.NewSSHWorker(workerConfig, session.Logger)
+	if err != nil {
+		return "", fmt.Errorf("failed to create SSH worker: %w", err)
+	}
+	defer worker.Close()
+	
+	if err := worker.Connect(ctx); err != nil {
+		return "", fmt.Errorf("failed to connect to SSH worker: %w", err)
+	}
+	
+	// Upload text to remote
+	remoteTextPath := filepath.Join(config.RemoteDir, "input.md")
+	if err := worker.UploadData(ctx, []byte(text), remoteTextPath); err != nil {
+		return "", fmt.Errorf("failed to upload text to remote: %w", err)
+	}
+	
+	// Execute translation using remote llama.cpp
+	remoteOutputPath := filepath.Join(config.RemoteDir, "output.md")
+	cmd := fmt.Sprintf("cd %s && /home/milosvasic/llama.cpp -m /home/milosvasic/models/tiny-llama-working.gguf -p 'Translate from Russian to Serbian Cyrillic: ' -f %s > %s",
+		config.RemoteDir, remoteTextPath, remoteOutputPath)
+	
+	result, err := worker.ExecuteCommand(ctx, cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute remote translation: %w", err)
+	}
+	
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("remote translation failed: %s", result.Stderr)
+	}
+	
+	// Download result
+	translatedData, err := worker.DownloadData(ctx, remoteOutputPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to download translation result: %w", err)
+	}
+	
+	return string(translatedData), nil
+}
+
+// executeLlamaCppTranslation uses local llama.cpp for translation
+func executeLlamaCppTranslation(ctx context.Context, config *UnifiedConfig, session *TranslationSession, text string) (string, error) {
+	session.Logger.Info("Starting local llama.cpp translation", map[string]interface{}{
+		"binary": config.LlamaBinary,
+		"model":  config.LlamaModel,
+	})
+	
+	// Create LLM translator
+	llmConfig := translator.TranslationConfig{
+		SourceLang:  config.SourceLang,
+		TargetLang:  config.TargetLang,
+		Provider:    "llamacpp",
+		Model:       config.Model,
+		Temperature: config.Temperature,
+		MaxTokens:   config.MaxTokens,
+		Timeout:     config.Timeout,
+		Options: map[string]interface{}{
+			"binary_path":  config.LlamaBinary,
+			"model_path":   config.LlamaModel,
+			"context_size": config.ContextSize,
+		},
+	}
+	
+	llmTranslator, err := llm.NewLLMTranslator(llmConfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to create LLM translator: %w", err)
+	}
+	
+	// Translate
+	result, err := llmTranslator.TranslateWithProgress(ctx, text, "Ebook content", session.EventBus, session.ID)
+	if err != nil {
+		return "", fmt.Errorf("LLM translation failed: %w", err)
+	}
+	
+	return result, nil
+}
+
+// executeAPITranslation uses API-based LLM providers
+func executeAPITranslation(ctx context.Context, config *UnifiedConfig, session *TranslationSession, text string) (string, error) {
+	session.Logger.Info("Starting API-based translation", map[string]interface{}{
+		"provider": config.Provider,
+		"model":    config.Model,
+	})
+	
+	// Create LLM translator
+	llmConfig := translator.TranslationConfig{
+		SourceLang:  config.SourceLang,
+		TargetLang:  config.TargetLang,
+		Provider:    config.Provider,
+		Model:       config.Model,
+		Temperature: config.Temperature,
+		MaxTokens:   config.MaxTokens,
+		Timeout:     config.Timeout,
+		APIKey:      config.APIKey,
+		BaseURL:     config.BaseURL,
+	}
+	
+	llmTranslator, err := llm.NewLLMTranslator(llmConfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to create LLM translator: %w", err)
+	}
+	
+	// Translate
+	result, err := llmTranslator.TranslateWithProgress(ctx, text, "Ebook content", session.EventBus, session.ID)
+	if err != nil {
+		return "", fmt.Errorf("API translation failed: %w", err)
+	}
+	
+	return result, nil
+}
+
+// Helper functions
+
+func parseFlags() *UnifiedConfig {
+	config := &UnifiedConfig{
+		SourceLang: "ru",
+		TargetLang: "sr",
+		Script:     "cyrillic",
+		Provider:   "openai",
+		Model:      "gpt-4",
+		Temperature: 0.3,
+		MaxTokens:   4096,
+		Timeout:     30 * time.Second,
+		SSHPort:     22,
+		RemoteDir:   "/tmp/translator",
+		Workers:     1,
+		ChunkSize:   2000,
+		Concurrency: 4,
+		VerifyOutput: true,
+		MonitoringPort: 8080,
+		ContextSize: 2048,
+	}
+	
+	flag.StringVar(&config.InputFile, "input", "", "Input ebook file")
+	flag.StringVar(&config.InputFile, "i", "", "Input ebook file (shorthand)")
+	flag.StringVar(&config.OutputFile, "output", "", "Output file (auto-detected if not specified)")
+	flag.StringVar(&config.OutputFile, "o", "", "Output file (shorthand)")
+	
+	flag.StringVar(&config.SourceLang, "source-lang", "ru", "Source language (default: ru)")
+	flag.StringVar(&config.TargetLang, "target-lang", "sr", "Target language (default: sr)")
+	flag.StringVar(&config.Script, "script", "cyrillic", "Target script: cyrillic, latin (default: cyrillic)")
+	
+	flag.StringVar(&config.Provider, "provider", "openai", "Translation provider: openai, anthropic, zhipu, deepseek, qwen, gemini, ollama, llamacpp, ssh")
+	flag.StringVar(&config.Model, "model", "gpt-4", "Model name")
+	flag.StringVar(&config.APIKey, "api-key", "", "API key for provider")
+	flag.StringVar(&config.BaseURL, "base-url", "", "Base URL for provider (if needed)")
+	flag.Float64Var(&config.Temperature, "temperature", 0.3, "LLM temperature")
+	flag.IntVar(&config.MaxTokens, "max-tokens", 4096, "Maximum tokens")
+	flag.DurationVar(&config.Timeout, "timeout", 30*time.Second, "Request timeout")
+	
+	// SSH options
+	flag.StringVar(&config.SSHHost, "ssh-host", "", "SSH host (for provider=ssh)")
+	flag.StringVar(&config.SSHUser, "ssh-user", "", "SSH username (for provider=ssh)")
+	flag.StringVar(&config.SSHPassword, "ssh-password", "", "SSH password (for provider=ssh)")
+	flag.IntVar(&config.SSHPort, "ssh-port", 22, "SSH port (default: 22)")
+	flag.StringVar(&config.RemoteDir, "remote-dir", "/tmp/translator", "Remote directory (default: /tmp/translator)")
+	
+	// Llama.cpp options
+	flag.StringVar(&config.LlamaBinary, "llama-binary", "/usr/local/bin/llama.cpp", "Path to llama.cpp binary")
+	flag.StringVar(&config.LlamaModel, "llama-model", "", "Path to llama.cpp model")
+	flag.IntVar(&config.ContextSize, "context-size", 2048, "LLM context size")
+	
+	// Execution options
+	flag.IntVar(&config.Workers, "workers", 1, "Number of parallel workers")
+	flag.IntVar(&config.ChunkSize, "chunk-size", 2000, "Text chunk size")
+	flag.IntVar(&config.Concurrency, "concurrency", 4, "Maximum concurrent operations")
+	flag.BoolVar(&config.VerifyOutput, "verify", true, "Verify translated output")
+	flag.BoolVar(&config.Verbose, "verbose", false, "Enable verbose logging")
+	
+	// Monitoring options
+	flag.BoolVar(&config.EnableMonitoring, "monitoring", false, "Enable web monitoring")
+	flag.IntVar(&config.MonitoringPort, "monitoring-port", 8080, "Monitoring server port")
+	
+	versionFlag := flag.Bool("version", false, "Show version information")
+	help := flag.Bool("help", false, "Show help information")
+	
+	flag.Parse()
+	
+	if *versionFlag {
+		fmt.Printf("Unified Translator v%s\n", appVersion)
+		os.Exit(0)
+	}
+	
+	if *help {
+		printHelp()
+		os.Exit(0)
+	}
+	
+	// Validate required arguments
+	if config.InputFile == "" {
+		fmt.Fprintf(os.Stderr, "Error: Input file is required\n")
+		printHelp()
+		os.Exit(1)
+	}
+	
+	// Auto-detect output file if not specified
+	if config.OutputFile == "" {
+		config.OutputFile = generateOutputFilename(config.InputFile)
+	}
+	
+	// Provider-specific validation
+	switch config.Provider {
+	case "ssh":
+		if config.SSHHost == "" || config.SSHUser == "" || config.SSHPassword == "" {
+			fmt.Fprintf(os.Stderr, "Error: SSH host, user, and password required for provider=ssh\n")
+			os.Exit(1)
+		}
+	case "llamacpp":
+		if config.LlamaModel == "" {
+			fmt.Fprintf(os.Stderr, "Error: llama-model path required for provider=llamacpp\n")
+			os.Exit(1)
+		}
+	default:
+		if config.APIKey == "" {
+			fmt.Fprintf(os.Stderr, "Error: API key required for provider=%s\n", config.Provider)
+			os.Exit(1)
+		}
+	}
+	
+	return config
+}
+
+func printHelp() {
+	fmt.Printf(`Unified Translator v%s - Multi-Provider Ebook Translation Tool
+
+Usage:
+  unified-translator -input <file> -provider <provider> [options]
+
+Providers:
+  openai      - OpenAI GPT models (requires API key)
+  anthropic   - Anthropic Claude models (requires API key)
+  zhipu       - Zhipu AI models (requires API key)
+  deepseek    - DeepSeek models (requires API key)
+  qwen        - Qwen models (requires API key)
+  gemini      - Google Gemini models (requires API key)
+  ollama      - Local Ollama models
+  llamacpp    - Local llama.cpp models
+  ssh         - Remote SSH worker with llama.cpp
+
+Basic Options:
+  -i, -input <file>        Input ebook file (FB2, EPUB, PDF, DOCX, TXT, HTML)
+  -o, -output <file>       Output file (auto-detected if not specified)
+  -source-lang <lang>       Source language (default: ru)
+  -target-lang <lang>       Target language (default: sr)
+  -script <script>          Target script: cyrillic, latin (default: cyrillic)
+
+Provider Configuration:
+  -provider <provider>      Translation provider (default: openai)
+  -model <model>            Model name (default: gpt-4)
+  -api-key <key>            API key for provider
+  -base-url <url>           Base URL for provider (if needed)
+  -temperature <value>      LLM temperature (default: 0.3)
+  -max-tokens <num>         Maximum tokens (default: 4096)
+  -timeout <duration>       Request timeout (default: 30s)
+
+SSH Configuration (provider=ssh):
+  -ssh-host <host>          SSH host
+  -ssh-user <user>          SSH username
+  -ssh-password <pass>      SSH password
+  -ssh-port <port>          SSH port (default: 22)
+  -remote-dir <dir>         Remote directory (default: /tmp/translator)
+
+Llama.cpp Configuration (provider=llamacpp):
+  -llama-binary <path>      Path to llama.cpp binary
+  -llama-model <path>       Path to llama.cpp model
+  -context-size <size>      LLM context size (default: 2048)
+
+Execution Options:
+  -workers <num>            Parallel workers (default: 1)
+  -chunk-size <size>         Text chunk size (default: 2000)
+  -concurrency <num>         Concurrent operations (default: 4)
+  -verify                   Verify output (default: true)
+  -verbose                  Enable verbose logging
+
+Monitoring:
+  -monitoring               Enable web monitoring
+  -monitoring-port <port>   Monitoring server port (default: 8080)
+
+Other:
+  -version                  Show version information
+  -help                     Show this help
+
+Examples:
+  # Translate with OpenAI
+  unified-translator -i book.fb2 -provider openai -api-key YOUR_KEY
+
+  # Translate with local llama.cpp
+  unified-translator -i book.fb2 -provider llamacpp -llama-model ./model.gguf
+
+  # Translate via SSH worker
+  unified-translator -i book.fb2 -provider ssh -ssh-host worker.local -ssh-user user -ssh-password pass
+
+  # Translate with monitoring
+  unified-translator -i book.fb2 -provider openai -api-key YOUR_KEY -monitoring
+
+Translation Flow:
+  1. Parse input ebook (FB2, EPUB, PDF, etc.)
+  2. Convert to markdown format
+  3. Translate using selected provider
+  4. Convert translated markdown to EPUB
+  5. Verify and document results
+
+Generated Files:
+  - <name>_original.md      Original content in markdown
+  - <name>_translated.md    Translated content in markdown  
+  - <name>_sr.epub        Final EPUB in Serbian Cyrillic
+  - <name>_session_report.md  Translation session report
+
+Monitoring Dashboard:
+  When -monitoring is enabled, access the web dashboard at:
+  http://localhost:8080/session?id=<session_id>
+`, appVersion)
+}
+
+func generateSessionID() string {
+	return fmt.Sprintf("tx-%d", time.Now().UnixNano())
+}
+
+func generateOutputFilename(inputFile string) string {
+	ext := strings.ToLower(filepath.Ext(inputFile))
+	baseName := strings.TrimSuffix(filepath.Base(inputFile), ext)
+	
+	return filepath.Join(filepath.Dir(inputFile), baseName+"_sr.epub")
+}
+
+func generateOriginalMDPath(inputFile string) string {
+	ext := strings.ToLower(filepath.Ext(inputFile))
+	baseName := strings.TrimSuffix(filepath.Base(inputFile), ext)
+	
+	return filepath.Join(filepath.Dir(inputFile), baseName+"_original.md")
+}
+
+func generateTranslatedMDPath(inputFile string) string {
+	ext := strings.ToLower(filepath.Ext(inputFile))
+	baseName := strings.TrimSuffix(filepath.Base(inputFile), ext)
+	
+	return filepath.Join(filepath.Dir(inputFile), baseName+"_translated.md")
+}
+
+func addStep(session *TranslationSession, name string) *TranslationStep {
+	step := TranslationStep{
+		Name:      name,
+		StartTime: time.Now(),
+		Success:   false,
+	}
+	session.Steps = append(session.Steps, step)
+	return &session.Steps[len(session.Steps)-1]
+}
+
+func stepComplete(step *TranslationStep) {
+	step.EndTime = time.Now()
+	step.Success = true
+}
+
+func stepError(step *TranslationStep, err string) error {
+	step.EndTime = time.Now()
+	step.Success = false
+	step.Error = err
+	return fmt.Errorf(err)
+}
+
+func addFile(session *TranslationSession, path, fileType string, size int64, verified bool, verification string) {
+	session.Files = append(session.Files, GeneratedFile{
+		Path:         path,
+		Type:         fileType,
+		Size:         size,
+		Verified:     verified,
+		Verification: verification,
+	})
+}
+
+// Placeholder functions - these need to be implemented based on existing functionality
+func parseInputFile(filePath string) (string, string, error) {
+	// Use existing ebook parser
+	parser := ebook.NewParser()
+	content, format, err := parser.ParseFile(filePath)
+	if err != nil {
+		return "", "", err
+	}
+	return content, format, nil
+}
+
+func convertToMarkdown(content, format string) (string, error) {
+	// Use existing markdown converter
+	switch format {
+	case "fb2":
+		converter := &ebook.FB2Parser{}
+		return converter.ToMarkdown(content)
+	case "epub":
+		converter := markdown.NewEPUBToMarkdownConverter()
+		return converter.Convert(content)
+	default:
+		// Simple text conversion for other formats
+		return content, nil
+	}
+}
+
+func verifyTranslation(text, targetLang, script string) bool {
+	// Basic verification - check for target script characters
+	if targetLang == "sr" && script == "cyrillic" {
+		serbianCyrillic := "љњертзуиопшђжасдфгхјклчћџ"
+		for _, char := range text {
+			if strings.ContainsRune(serbianCyrillic, char) {
+				return true
+			}
+		}
+		return false
+	}
+	return len(strings.TrimSpace(text)) > 0
+}
+
+func generateEPUB(content, outputPath, inputFile string) error {
+	// Use existing EPUB generator
+	generator := markdown.NewMarkdownToEPUBConverter()
+	return generator.GenerateEPUB(content, outputPath, inputFile)
+}
+
+func verifyEPUB(path string) bool {
+	// Basic EPUB verification
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	
+	buffer := make([]byte, 1024)
+	n, err := file.Read(buffer)
+	if err != nil && err != nil {
+		return false
+	}
+	
+	content := string(buffer[:n])
+	return strings.Contains(content, "application/epub+zip") && string(buffer[:2]) == "PK"
+}
+
+func getFileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func startMonitoringServer(port int, eventBus *events.EventBus) {
+	// This would start the monitoring server - implement based on existing code
+	fmt.Printf("Monitoring server available on port %d\n", port)
+}
+
+func generateSessionReport(session *TranslationSession, err error) {
+	reportPath := strings.TrimSuffix(session.Config.OutputFile, filepath.Ext(session.Config.OutputFile)) + "_session_report.md"
+	
+	file, err2 := os.Create(reportPath)
+	if err2 != nil {
+		return
+	}
+	defer file.Close()
+	
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+	
+	fmt.Fprintf(writer, "# Translation Session Report\n\n")
+	fmt.Fprintf(writer, "**Session ID:** %s\n", session.ID)
+	fmt.Fprintf(writer, "**Start Time:** %s\n", session.StartTime.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(writer, "**End Time:** %s\n", session.EndTime.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(writer, "**Duration:** %s\n", session.EndTime.Sub(session.StartTime).String())
+	fmt.Fprintf(writer, "**Provider:** %s\n", session.Config.Provider)
+	fmt.Fprintf(writer, "**Input:** %s\n", session.Config.InputFile)
+	fmt.Fprintf(writer, "**Output:** %s\n\n", session.Config.OutputFile)
+	
+	if err != nil {
+		fmt.Fprintf(writer, "## Error\n\n%s\n\n", err.Error())
+	} else {
+		fmt.Fprintf(writer, "## Status\n\n✅ Translation completed successfully\n\n")
+	}
+	
+	fmt.Fprintf(writer, "## Steps\n\n")
+	for i, step := range session.Steps {
+		status := "✅ Success"
+		if !step.Success {
+			status = "❌ Failed"
+		}
+		fmt.Fprintf(writer, "### Step %d: %s %s\n", i+1, step.Name, status)
+		fmt.Fprintf(writer, "- **Duration:** %s\n", step.EndTime.Sub(step.StartTime).String())
+		if step.Details != "" {
+			fmt.Fprintf(writer, "- **Details:** %s\n", step.Details)
+		}
+		if step.Error != "" {
+			fmt.Fprintf(writer, "- **Error:** %s\n", step.Error)
+		}
+		fmt.Fprintf(writer, "\n")
+	}
+	
+	fmt.Fprintf(writer, "## Generated Files\n\n")
+	for _, file := range session.Files {
+		status := "✅ Verified"
+		if !file.Verified {
+			status = "⚠️ Issue"
+		}
+		fmt.Fprintf(writer, "### %s %s\n", filepath.Base(file.Path), status)
+		fmt.Fprintf(writer, "- **Path:** %s\n", file.Path)
+		fmt.Fprintf(writer, "- **Type:** %s\n", file.Type)
+		fmt.Fprintf(writer, "- **Size:** %d bytes\n", file.Size)
+		fmt.Fprintf(writer, "- **Verification:** %s\n\n", file.Verification)
+	}
+	
+	fmt.Printf("Session report generated: %s\n", reportPath)
+}

@@ -1,199 +1,201 @@
-.PHONY: all build clean test test-unit test-integration test-e2e test-performance test-stress run-cli run-server install deps fmt lint docker-build docker-run help
+# Makefile for Translation System v3.0.0
 
 # Variables
-BINARY_CLI=translator
-BINARY_SERVER=translator-server
-BUILD_DIR=build
-GO=go
-GOFLAGS=-v
-LDFLAGS=-ldflags "-w -s"
+APP_NAME = translator
+VERSION = 3.0.0
+BUILD_DIR = build
+DIST_DIR = dist
+
+# Go parameters
+GOCMD = go
+GOBUILD = $(GOCMD) build
+GOCLEAN = $(GOCMD) clean
+GOTEST = $(GOCMD) test
+GOGET = $(GOCMD) get
+GOMOD = $(GOCMD) mod
+GOFMT = $(GOCMD) fmt
+GOVET = $(GOCMD) vet
+
+# Build flags
+LDFLAGS = -ldflags "-X main.appVersion=$(VERSION)"
+
+# Docker variables
+DOCKER_IMAGE = translator-system
+DOCKER_TAG = v$(VERSION)
 
 # Default target
-all: deps build test
+.PHONY: all
+all: clean deps fmt vet test build
 
-# Help target
-help:
-	@echo "Available targets:"
-	@echo "  build              - Build CLI and server binaries"
-	@echo "  build-cli          - Build CLI binary only"
-	@echo "  build-server       - Build server binary only"
-	@echo "  build-deployment   - Build deployment CLI"
-	@echo "  clean              - Remove build artifacts"
-	@echo "  test               - Run all tests"
-	@echo "  test-unit          - Run unit tests"
-	@echo "  test-integration   - Run integration tests"
-	@echo "  test-e2e           - Run end-to-end tests"
-	@echo "  test-performance   - Run performance tests"
-	@echo "  test-stress        - Run stress tests"
-	@echo "  test-deployment    - Run deployment tests"
-	@echo "  run-cli            - Run CLI application"
-	@echo "  run-server         - Run server application"
-	@echo "  install            - Install binaries to GOPATH/bin"
-	@echo "  deps               - Download dependencies"
-	@echo "  fmt                - Format code"
-	@echo "  lint               - Lint code"
-	@echo "  docker-build       - Build Docker image"
-	@echo "  docker-run         - Run Docker container"
-	@echo "  generate-certs     - Generate self-signed TLS certificates"
-	@echo "  deploy             - Deploy distributed system"
-	@echo "  stop-deployment    - Stop deployment"
-	@echo "  status             - Check deployment status"
-	@echo "  plan               - Generate deployment plan"
-	@echo "  monitor            - Run production monitoring checks"
-	@echo "  monitor-continuous - Start continuous monitoring"
-	@echo "  monitor-health     - Quick health check"
-	@echo "  monitor-metrics    - Collect system metrics"
-
-# Build targets
-build: build-cli build-server
-
-build-cli:
-	@echo "Building CLI..."
-	@mkdir -p $(BUILD_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_CLI) ./cmd/cli
-
-build-server:
-	@echo "Building server..."
-	@mkdir -p $(BUILD_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_SERVER) ./cmd/server
-
-build-deployment:
-	@echo "Building deployment CLI..."
-	@mkdir -p $(BUILD_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/deployment-cli ./cmd/deployment
-
-# Clean
-clean:
-	@echo "Cleaning..."
-	@rm -rf $(BUILD_DIR)
-	@$(GO) clean
-
-# Test targets
-test: test-unit test-integration
-
-test-unit:
-	@echo "Running unit tests..."
-	$(GO) test -v -race -coverprofile=coverage-unit.out ./...
-
-test-integration:
-	@echo "Running integration tests..."
-	$(GO) test -v -race -tags=integration ./test/integration/...
-
-test-e2e:
-	@echo "Running E2E tests..."
-	$(GO) test -v -tags=e2e ./test/e2e/...
-
-test-performance:
-	@echo "Running performance tests..."
-	$(GO) test -v -bench=. -benchmem -tags=performance ./test/performance/...
-
-test-stress:
-	@echo "Running stress tests..."
-	$(GO) test -v -timeout=30m -tags=stress ./test/stress/...
-
-test-coverage:
-	@echo "Generating coverage report..."
-	$(GO) test -coverprofile=coverage.out ./...
-	$(GO) tool cover -html=coverage.out -o coverage.html
-
-# Run targets
-run-cli:
-	$(GO) run ./cmd/cli/main.go
-
-run-server:
-	$(GO) run ./cmd/server/main.go
-
-# Install
-install:
-	@echo "Installing binaries..."
-	$(GO) install $(LDFLAGS) ./cmd/cli
-	$(GO) install $(LDFLAGS) ./cmd/server
-
-# Dependencies
+# Install dependencies
+.PHONY: deps
 deps:
-	@echo "Downloading dependencies..."
-	$(GO) mod download
-	$(GO) mod tidy
+	$(GOMOD) download
+	$(GOMOD) tidy
 
-# Code quality
+# Format code
+.PHONY: fmt
 fmt:
-	@echo "Formatting code..."
-	$(GO) fmt ./...
+	$(GOFMT) ./...
 
-lint:
-	@echo "Linting code..."
-	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-	golangci-lint run ./...
+# Vet code
+.PHONY: vet
+vet:
+	$(GOVET) ./...
 
-# Docker
+# Run tests
+.PHONY: test
+test:
+	$(GOTEST) -v ./...
+
+# Run tests with coverage
+.PHONY: test-coverage
+test-coverage:
+	$(GOTEST) -v -cover ./...
+
+# Build all binaries
+.PHONY: build
+build: build-grpc build-api build-cli
+
+# Build gRPC server
+.PHONY: build-grpc
+build-grpc:
+	@echo "Building gRPC server..."
+	mkdir -p $(BUILD_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/grpc-server ./cmd/grpc-server
+
+# Build API server
+.PHONY: build-api
+build-api:
+	@echo "Building API server..."
+	mkdir -p $(BUILD_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/api-server ./cmd/api-server
+
+# Build unified CLI
+.PHONY: build-cli
+build-cli:
+	@echo "Building unified CLI..."
+	mkdir -p $(BUILD_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/unified-translator ./cmd/unified-translator
+
+# Build for all platforms
+.PHONY: build-all
+build-all: clean deps
+	@echo "Building for all platforms..."
+	
+	# Linux AMD64
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/grpc-server-linux-amd64 ./cmd/grpc-server
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/api-server-linux-amd64 ./cmd/api-server
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/unified-translator-linux-amd64 ./cmd/unified-translator
+	
+	# Linux ARM64
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/grpc-server-linux-arm64 ./cmd/grpc-server
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/api-server-linux-arm64 ./cmd/api-server
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/unified-translator-linux-arm64 ./cmd/unified-translator
+	
+	# macOS AMD64
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/grpc-server-darwin-amd64 ./cmd/grpc-server
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/api-server-darwin-amd64 ./cmd/api-server
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/unified-translator-darwin-amd64 ./cmd/unified-translator
+	
+	# macOS ARM64
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/grpc-server-darwin-arm64 ./cmd/grpc-server
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/api-server-darwin-arm64 ./cmd/api-server
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/unified-translator-darwin-arm64 ./cmd/unified-translator
+	
+	# Windows AMD64
+	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/grpc-server-windows-amd64.exe ./cmd/grpc-server
+	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/api-server-windows-amd64.exe ./cmd/api-server
+	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/unified-translator-windows-amd64.exe ./cmd/unified-translator
+
+# Clean build artifacts
+.PHONY: clean
+clean:
+	@echo "Cleaning build artifacts..."
+	$(GOCLEAN)
+	rm -rf $(BUILD_DIR)
+	rm -rf $(DIST_DIR)
+	rm -f *.log
+
+# Run gRPC server
+.PHONY: run-grpc
+run-grpc: build-grpc
+	@echo "Starting gRPC server..."
+	./$(BUILD_DIR)/grpc-server
+
+# Run API server
+.PHONY: run-api
+run-api: build-api
+	@echo "Starting API server..."
+	./$(BUILD_DIR)/api-server
+
+# Run full system
+.PHONY: run-system
+run-system: build-grpc build-api
+	@echo "Starting translation system..."
+	@echo "Starting gRPC server in background..."
+	./$(BUILD_DIR)/grpc-server &
+	sleep 2
+	@echo "Starting API server..."
+	./$(BUILD_DIR)/api-server
+
+# Run development environment
+.PHONY: dev
+dev:
+	@echo "Starting development environment..."
+	@echo "Starting gRPC server (port 50051)..."
+	go run ./cmd/grpc-server -log-level debug &
+	sleep 2
+	@echo "Starting API server (port 8080)..."
+	go run ./cmd/api-server -log-level debug
+
+# Docker targets
+.PHONY: docker-build
 docker-build:
 	@echo "Building Docker image..."
-	docker build -t translator:latest .
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	docker tag $(DOCKER_IMAGE):$(DOCKER_TAG) $(DOCKER_IMAGE):latest
 
+.PHONY: docker-run
 docker-run:
 	@echo "Running Docker container..."
-	docker run -p 8443:8443 -v $(PWD)/certs:/app/certs translator:latest
+	docker run -p 50051:50051 -p 8080:8080 $(DOCKER_IMAGE):$(DOCKER_TAG)
 
-# Certificate generation
-generate-certs:
-	@echo "Generating self-signed TLS certificates..."
-	@mkdir -p certs
-	openssl req -x509 -newkey rsa:4096 -keyout certs/server.key -out certs/server.crt -days 365 -nodes -subj "/CN=localhost"
-	@echo "Certificates generated in certs/"
+# Show help
+.PHONY: help
+help:
+	@echo "Translation System Makefile v$(VERSION)"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all           - Clean, deps, fmt, vet, test, and build"
+	@echo "  build         - Build all binaries for current platform"
+	@echo "  build-grpc    - Build gRPC server"
+	@echo "  build-api     - Build API server"
+	@echo "  build-cli     - Build unified CLI"
+	@echo "  build-all     - Build for all platforms"
+	@echo "  clean         - Clean build artifacts"
+	@echo "  deps          - Download dependencies"
+	@echo "  fmt           - Format code"
+	@echo "  vet           - Vet code"
+	@echo "  test          - Run tests"
+	@echo "  test-coverage - Run tests with coverage"
+	@echo "  run-grpc      - Run gRPC server"
+	@echo "  run-api       - Run API server"
+	@echo "  run-system    - Run full system (gRPC + API)"
+	@echo "  dev           - Run development environment"
+	@echo "  docker-build  - Build Docker image"
+	@echo "  docker-run    - Run Docker container"
+	@echo "  help          - Show this help message"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make dev                    # Start development environment"
+	@echo "  make build                  # Build all binaries"
+	@echo "  make run-system             # Run full system"
+	@echo "  make docker-build docker-run # Build and run with Docker"
 
-# Development
-dev-server:
-	@echo "Starting development server with auto-reload..."
-	@which air > /dev/null || (echo "Installing air..." && go install github.com/cosmtrek/air@latest)
-	air -c .air.toml
+# Development shortcuts
+.PHONY: quick-test
+quick-test: fmt vet test
 
-# Build for multiple platforms
-build-all:
-	@echo "Building for multiple platforms..."
-	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_CLI)-linux-amd64 ./cmd/cli
-	GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_CLI)-darwin-amd64 ./cmd/cli
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_CLI)-windows-amd64.exe ./cmd/cli
-
-# Deployment targets
-.PHONY: deploy stop-deployment status plan test-deployment
-
-deploy: build-deployment
-	@echo "Deploying distributed system..."
-	./build/deployment-cli -action deploy -plan deployment-plan.json
-
-stop-deployment: build-deployment
-	@echo "Stopping deployment..."
-	./build/deployment-cli -action stop
-
-status: build-deployment
-	@echo "Checking deployment status..."
-	./build/deployment-cli -action status
-
-plan: build-deployment
-	@echo "Generating deployment plan..."
-	./build/deployment-cli -action generate-plan
-
-test-deployment:
-	@echo "Running deployment tests..."
-	$(GO) test -v ./pkg/deployment/...
-
-# Monitoring targets
-.PHONY: monitor monitor-continuous monitor-health monitor-metrics
-
-monitor:
-	@echo "Running production monitoring..."
-	./scripts/monitor-production.sh once
-
-monitor-continuous:
-	@echo "Starting continuous monitoring..."
-	./scripts/monitor-production.sh continuous
-
-monitor-health:
-	@echo "Running health checks..."
-	./scripts/monitor-production.sh health
-
-monitor-metrics:
-	@echo "Collecting metrics..."
-	./scripts/monitor-production.sh metrics
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_SERVER)-windows-amd64.exe ./cmd/server
+.PHONY: pre-commit
+pre-commit: quick-test

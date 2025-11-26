@@ -14,11 +14,13 @@ import (
 
 	"flag"
 
+	"digital.vasic.translator/pkg/events"
 	"digital.vasic.translator/pkg/logger"
 	"digital.vasic.translator/pkg/markdown"
 	"digital.vasic.translator/pkg/report"
 	"digital.vasic.translator/pkg/sshworker"
 	"digital.vasic.translator/pkg/translator/llm"
+	"digital.vasic.translator/pkg/websocket"
 )
 
 const (
@@ -58,7 +60,10 @@ type TranslationProgress struct {
 	TranslationStats map[string]interface{}
 	ReportGenerator  *report.ReportGenerator
 	Session          report.TranslationSession
-	Worker           *sshworker.SSHWorker
+	Worker           *sshworker.MonitoredSSHWorker
+	EventBus         *events.EventBus
+	WebSocketHub     *websocket.Hub
+	SessionID        string
 }
 
 func main() {
@@ -70,6 +75,17 @@ func main() {
 	}
 
 	ctx := context.Background()
+	
+	// Initialize event bus and WebSocket hub
+	eventBus := events.NewEventBus()
+	wsHub := websocket.NewHub(eventBus)
+	
+	// Generate unique session ID
+	sessionID := fmt.Sprintf("ssh-translation-%d", time.Now().UnixNano())
+	
+	// Start WebSocket hub in background
+	go wsHub.Run()
+	
 	progress := &TranslationProgress{
 		StartTime:      time.Now(),
 		TotalSteps:     6, // Hash check → Update → MD conversion → Translation → Format conversion → Cleanup
@@ -77,6 +93,9 @@ func main() {
 		FilesDownloaded: make([]string, 0),
 		InputFile:      config.InputFile,
 		OutputFile:     config.OutputFile,
+		EventBus:       eventBus,
+		WebSocketHub:   wsHub,
+		SessionID:      sessionID,
 	}
 
 	// Initialize report generator
@@ -110,7 +129,28 @@ func main() {
 			"ssh_host": config.SSHHost,
 			"ssh_user": config.SSHUser,
 			"report_dir": reportDir,
+			"session_id": sessionID,
 		})
+	
+	// Emit session start event
+	eventBus.Publish(events.Event{
+		Type:      events.EventTranslationStarted,
+		SessionID: sessionID,
+		Message:   "SSH translation session started",
+		Data: map[string]interface{}{
+			"input_file":  config.InputFile,
+			"output_file": config.OutputFile,
+			"ssh_host":    config.SSHHost,
+			"ssh_user":    config.SSHUser,
+			"total_steps": progress.TotalSteps,
+		},
+	})
+	
+	// Print monitoring information
+	fmt.Printf("\n🔗 WebSocket Monitoring Available:\n")
+	fmt.Printf("   Connect to: ws://localhost:8080/ws?session_id=%s\n", sessionID)
+	fmt.Printf("   Or use API: GET /api/v1/status/%s\n", sessionID)
+	fmt.Printf("\n")
 
 	if err := executeSSHTranslation(ctx, config, progress); err != nil {
 		fmt.Fprintf(os.Stderr, "Translation failed: %v\n", err)
@@ -311,7 +351,20 @@ func executeSSHTranslation(ctx context.Context, config *Config, progress *Transl
 			})
 		}
 	}
-
+	
+	// Emit session completion event
+	progress.EventBus.Publish(events.Event{
+		Type:      events.EventTranslationCompleted,
+		SessionID: progress.SessionID,
+		Message:   "SSH translation session completed",
+		Data: map[string]interface{}{
+			"duration":          time.Since(progress.StartTime).String(),
+			"files_created":     len(progress.FilesCreated),
+			"files_downloaded": len(progress.FilesDownloaded),
+			"success":           true,
+		},
+	})
+	
 	return nil
 }
 
@@ -332,11 +385,11 @@ func step1InitializeAndVerify(ctx context.Context, config *Config, progress *Tra
 		CommandTimeout:    10 * time.Minute,
 	}
 
-	// Initialize SSH worker
-	worker, err := sshworker.NewSSHWorker(workerConfig, config.Logger)
+	// Initialize monitored SSH worker
+	worker, err := sshworker.NewMonitoredSSHWorker(workerConfig, progress.EventBus, progress.SessionID, config.Logger)
 	if err != nil {
-		progress.ReportGenerator.AddIssue("setup", "error", "Failed to create SSH worker", "sshworker")
-		return fmt.Errorf("failed to create SSH worker: %w", err)
+		progress.ReportGenerator.AddIssue("setup", "error", "Failed to create monitored SSH worker", "sshworker")
+		return fmt.Errorf("failed to create monitored SSH worker: %w", err)
 	}
 
 	// Store worker in progress for reuse
@@ -380,6 +433,20 @@ func step1InitializeAndVerify(ctx context.Context, config *Config, progress *Tra
 			})
 			progress.ReportGenerator.AddLogEntry("info", "Codebase hashes match, no update needed", "version_manager", 
 				map[string]interface{}{"hash": localHash})
+			
+			// Emit progress event
+			progress.EventBus.Publish(events.Event{
+				Type:      events.EventTranslationProgress,
+				SessionID: progress.SessionID,
+				Message:   "Codebase verification completed - no update needed",
+				Data: map[string]interface{}{
+					"step":             "codebase_verification",
+					"hash_match":       true,
+					"completed_steps":  1,
+					"total_steps":      progress.TotalSteps,
+				},
+			})
+			
 			progress.CompletedSteps = 1
 			return nil
 		}
@@ -555,7 +622,7 @@ chmod +x convert_to_markdown.sh
 		return "", fmt.Errorf("unsupported input format for markdown conversion: %s", ext)
 	}
 
-	result, err := worker.ExecuteCommand(ctx, convertCmd)
+	result, err := worker.ExecuteCommandWithProgress(ctx, "markdown_conversion", convertCmd)
 	if err != nil {
 		progress.ReportGenerator.AddIssue("conversion", "error", "Failed to convert to markdown", "ebook_converter")
 		return "", fmt.Errorf("failed to convert to markdown: %w", err)
@@ -746,17 +813,18 @@ if os.path.exists('/usr/bin/which'):
 		}
 	}
 
-	// Run translation using pure LLM
+	// Run translation using monitored LLM command
 	translateCmd := fmt.Sprintf(`cd %s && python3 translate_llm_only.py "%s" "%s"`,
 		config.RemoteDir, markdownOriginal, markdownTranslatedPath)
 
-	config.Logger.Debug("Executing translation command", map[string]interface{}{
+	config.Logger.Debug("Executing monitored translation command", map[string]interface{}{
 		"command": translateCmd,
 		"remote_dir": config.RemoteDir,
 		"script_path": filepath.Join(config.RemoteDir, "translate_llamacpp_prod.sh"),
 	})
 
-	result, err := worker.ExecuteCommand(ctx, translateCmd)
+	// Use monitored long-running command for better progress tracking
+	result, err := worker.MonitorLongRunningCommand(ctx, "llm_translation", translateCmd, 30*time.Second)
 	if err != nil {
 		return "", fmt.Errorf("failed to translate markdown: %w", err)
 	}
@@ -826,7 +894,7 @@ chmod +x convert_to_epub.sh
 	remoteOutputPath,
 	string(epubScript))
 
-	result, err := worker.ExecuteCommand(ctx, convertCmd)
+	result, err := worker.ExecuteCommandWithProgress(ctx, "epub_conversion", convertCmd)
 	if err != nil {
 		return fmt.Errorf("failed to convert markdown to EPUB: %w", err)
 	}

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Progress Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-pending { @apply bg-yellow-100 text-yellow-800; }
+        .status-running { @apply bg-blue-100 text-blue-800; }
+        .status-completed { @apply bg-green-100 text-green-800; }
+        .status-failed { @apply bg-red-100 text-red-800; }
+        .status-cancelled { @apply bg-gray-100 text-gray-800; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">🔬 Translation Progress Monitor</h1>
+            <p class="text-gray-600">Real-time monitoring of translation jobs via WebSocket events</p>
+            <div class="flex items-center mt-4 space-x-6">
+                <div class="flex items-center">
+                    <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                    <span class="ml-2 text-sm text-gray-600">Connected</span>
+                </div>
+                <div class="text-sm text-gray-600">
+                    Session ID: <span id="session-id" class="font-mono font-bold">demo-session-123</span>
+                </div>
+                <div class="text-sm text-gray-600">
+                    Client ID: <span id="client-id" class="font-mono font-bold">web-demo</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">📊 Progress</h3>
+                <div class="relative">
+                    <div class="mb-2 flex justify-between">
+                        <span class="text-sm font-medium text-gray-700">Overall Progress</span>
+                        <span class="text-sm font-bold text-blue-600" id="progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-4">
+                        <div id="progress-bar" class="bg-blue-600 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔄 Current Step</h3>
+                <div id="current-step" class="text-2xl font-bold text-blue-600">Initializing</div>
+                <div id="step-message" class="text-sm text-gray-600 mt-2">Waiting for translation to start...</div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">⏱️ Duration</h3>
+                <div id="duration" class="text-2xl font-bold text-gray-900">00:00:00</div>
+                <div id="status-badge" class="mt-2">
+                    <span class="px-3 py-1 text-xs font-semibold rounded-full status-pending">Pending</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">📋 Event Log</h3>
+            <div id="event-log" class="space-y-2 max-h-96 overflow-y-auto">
+                <div class="text-sm text-gray-500 italic">Waiting for events...</div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="bg-white rounded-lg shadow-md p-6 mt-8">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">🎮 Control Panel</h3>
+            <div class="flex space-x-4">
+                <button onclick="simulateProgress()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
+                    Simulate Translation Progress
+                </button>
+                <button onclick="clearLog()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md">
+                    Clear Log
+                </button>
+                <button onclick="disconnectWS()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md">
+                    Disconnect WebSocket
+                </button>
+                <button onclick="connectWS()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md">
+                    Reconnect WebSocket
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let sessionId = 'demo-session-123';
+        let clientId = 'web-demo';
+        let startTime = Date.now();
+        let durationInterval = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            connectWS();
+            startDurationTimer();
+        });
+
+        function connectWS() {
+            if (ws) {
+                ws.close();
+            }
+
+            const wsUrl = `ws://localhost:8090/ws?session_id=${sessionId}&client_id=${clientId}`;
+            console.log('Connecting to WebSocket:', wsUrl);
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+                addLogEntry('connected', '🟢 WebSocket connected', 'success');
+                updateConnectionStatus(true);
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                console.log('WebSocket message:', data);
+                handleWebSocketMessage(data);
+            };
+            
+            ws.onclose = function() {
+                console.log('WebSocket disconnected');
+                addLogEntry('disconnected', '🔴 WebSocket disconnected', 'error');
+                updateConnectionStatus(false);
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addLogEntry('error', '🚨 WebSocket error: ' + error, 'error');
+            };
+        }
+
+        function disconnectWS() {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'translation_started':
+                    updateStatus('running', 'Translation started');
+                    updateProgress(0, 'parsing', 'Parsing input file...');
+                    addLogEntry('started', '📖 Translation started', 'info');
+                    break;
+                case 'step_completed':
+                    updateProgress(data.progress, data.step, data.message);
+                    addLogEntry('step', `✅ Step completed: ${data.step}`, 'success');
+                    break;
+                case 'translation_progress':
+                    updateProgress(data.progress, data.current_step, data.message);
+                    addLogEntry('progress', `📊 Progress: ${Math.round(data.progress)}% - ${data.message}`, 'info');
+                    break;
+                case 'translation_completed':
+                    updateStatus('completed', 'Translation completed');
+                    updateProgress(100, 'completed', 'Translation completed successfully');
+                    addLogEntry('completed', '🎉 Translation completed successfully!', 'success');
+                    break;
+                case 'translation_error':
+                    updateStatus('failed', 'Translation failed');
+                    addLogEntry('error', `❌ Translation error: ${data.error}`, 'error');
+                    break;
+                default:
+                    addLogEntry('unknown', `❓ Unknown event type: ${data.type}`, 'warning');
+            }
+        }
+
+        function updateStatus(status, message) {
+            const statusBadge = document.querySelector('#status-badge span');
+            statusBadge.className = `px-3 py-1 text-xs font-semibold rounded-full status-${status}`;
+            statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function updateProgress(percent, step, message) {
+            // Update progress bar
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('progress-percent').textContent = Math.round(percent) + '%';
+            
+            // Update current step
+            document.getElementById('current-step').textContent = step || 'Unknown';
+            document.getElementById('step-message').textContent = message || '';
+        }
+
+        function addLogEntry(type, message, level) {
+            const eventLog = document.getElementById('event-log');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const entry = document.createElement('div');
+            entry.className = 'flex items-start space-x-2 p-3 rounded-lg border-l-4 bg-gray-50 ' + 
+                           (level === 'error' ? 'border-red-500' : 
+                            level === 'success' ? 'border-green-500' : 
+                            level === 'warning' ? 'border-yellow-500' : 'border-blue-500');
+            
+            entry.innerHTML = `
+                <span class="text-sm font-mono text-gray-500">${timestamp}</span>
+                <span class="text-sm">${message}</span>
+            `;
+            
+            // Remove initial message if present
+            if (eventLog.children.length === 1 && eventLog.children[0].classList.contains('italic')) {
+                eventLog.innerHTML = '';
+            }
+            
+            eventLog.appendChild(entry);
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusElement = document.querySelector('.animate-pulse');
+            if (connected) {
+                statusElement.classList.add('animate-pulse');
+                statusElement.classList.remove('bg-red-500');
+                statusElement.classList.add('bg-green-500');
+            } else {
+                statusElement.classList.remove('animate-pulse');
+                statusElement.classList.remove('bg-green-500');
+                statusElement.classList.add('bg-red-500');
+            }
+        }
+
+        function startDurationTimer() {
+            durationInterval = setInterval(function() {
+                const elapsed = Date.now() - startTime;
+                const hours = Math.floor(elapsed / 3600000);
+                const minutes = Math.floor((elapsed % 3600000) / 60000);
+                const seconds = Math.floor((elapsed % 60000) / 1000);
+                
+                const timeString = 
+                    String(hours).padStart(2, '0') + ':' +
+                    String(minutes).padStart(2, '0') + ':' +
+                    String(seconds).padStart(2, '0');
+                
+                document.getElementById('duration').textContent = timeString;
+            }, 1000);
+        }
+
+        function simulateProgress() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addLogEntry('error', '❌ WebSocket not connected - cannot simulate progress', 'error');
+                return;
+            }
+
+            // Simulate translation progress
+            const steps = [
+                { type: 'translation_started', progress: 0 },
+                { type: 'step_completed', step: 'parsing', message: 'File parsed successfully', progress: 10 },
+                { type: 'translation_progress', step: 'conversion', message: 'Converting to markdown...', progress: 25 },
+                { type: 'step_completed', step: 'conversion', message: 'Converted to markdown', progress: 30 },
+                { type: 'translation_progress', step: 'translation', message: 'Translating content...', progress: 60 },
+                { type: 'translation_progress', step: 'translation', message: 'Applying language-specific rules...', progress: 85 },
+                { type: 'step_completed', step: 'translation', message: 'Translation completed', progress: 90 },
+                { type: 'translation_progress', step: 'generation', message: 'Generating final EPUB...', progress: 95 },
+                { type: 'translation_completed', progress: 100 }
+            ];
+
+            let stepIndex = 0;
+            const interval = setInterval(function() {
+                if (stepIndex >= steps.length) {
+                    clearInterval(interval);
+                    return;
+                }
+
+                const step = steps[stepIndex];
+                handleWebSocketMessage(step);
+                
+                // Also send to WebSocket server if it supports echo
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(step));
+                }
+                
+                stepIndex++;
+            }, 1500);
+        }
+
+        function clearLog() {
+            const eventLog = document.getElementById('event-log');
+            eventLog.innerHTML = '<div class="text-sm text-gray-500 italic">Log cleared</div>';
+        }
+    </script>
+</body>
+</html>

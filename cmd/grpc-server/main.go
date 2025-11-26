@@ -1,0 +1,222 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
+	"digital.vasic.translator/pkg/events"
+	"digital.vasic.translator/pkg/grpc"
+	"digital.vasic.translator/pkg/grpc/proto"
+	"digital.vasic.translator/pkg/logger"
+)
+
+const (
+	appVersion = "3.0.0"
+)
+
+// ServerConfig holds configuration for the gRPC server
+type ServerConfig struct {
+	Address        string
+	Port           int
+	MaxConnections int
+	EnableReflection bool
+	EnableMetrics  bool
+	LogLevel       string
+}
+
+func main() {
+	// Parse command line flags
+	config := parseFlags()
+	
+	// Initialize logger
+	logLevel := parseLogLevel(config.LogLevel)
+	logger := logger.NewLogger(logger.LoggerConfig{
+		Level:  logLevel,
+		Format: logger.FORMAT_JSON,
+	})
+	
+	logger.Info("Starting gRPC Translation Server", map[string]interface{}{
+		"version": appVersion,
+		"address": fmt.Sprintf("%s:%d", config.Address, config.Port),
+	})
+	
+	// Initialize event bus
+	eventBus := events.NewEventBus()
+	
+	// Initialize core translator
+	coreTranslator := grpc.NewCoreTranslator(logger)
+	
+	// Initialize server configuration
+	serverConfig := &grpc.ServerConfig{
+		MaxConcurrentTranslations: 50,
+		SessionTimeout:          24 * time.Hour,
+		StreamBufferSize:        1000,
+		EnableMetrics:           config.EnableMetrics,
+	}
+	
+	// Create gRPC server
+	grpcServer := grpc.NewServer(eventBus, logger, coreTranslator, serverConfig)
+	
+	// Create listener
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", config.Address, config.Port))
+	if err != nil {
+		logger.Fatal("Failed to listen", map[string]interface{}{
+			"address": fmt.Sprintf("%s:%d", config.Address, config.Port),
+			"error": err.Error(),
+		})
+	}
+	
+	// Register reflection if enabled
+	if config.EnableReflection {
+		reflection.Register(grpcServer.GetGRPCServer())
+		logger.Info("gRPC reflection enabled")
+	}
+	
+	// Register translation service
+	proto.RegisterTranslationServiceServer(grpcServer.GetGRPCServer(), grpcServer)
+	
+	// Start server in goroutine
+	errChan := make(chan error, 1)
+	go func() {
+		logger.Info("gRPC server starting", map[string]interface{}{
+			"address": lis.Addr().String(),
+		})
+		
+		if err := grpcServer.GetGRPCServer().Serve(lis); err != nil {
+			errChan <- err
+		}
+	}()
+	
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	
+	select {
+	case err := <-errChan:
+		logger.Fatal("Server failed", map[string]interface{}{
+			"error": err.Error(),
+		})
+	case <-quit:
+		logger.Info("Shutting down gRPC server...")
+		grpcServer.Shutdown()
+		logger.Info("gRPC server shutdown complete")
+	}
+}
+
+// parseFlags parses command line flags
+func parseFlags() *ServerConfig {
+	config := &ServerConfig{}
+	
+	flag.StringVar(&config.Address, "address", "0.0.0.0", "Server address")
+	flag.IntVar(&config.Port, "port", 50051, "Server port")
+	flag.IntVar(&config.MaxConnections, "max-connections", 1000, "Maximum concurrent connections")
+	flag.BoolVar(&config.EnableReflection, "reflection", true, "Enable gRPC reflection")
+	flag.BoolVar(&config.EnableMetrics, "metrics", true, "Enable metrics collection")
+	flag.StringVar(&config.LogLevel, "log-level", "info", "Log level: debug, info, warn, error")
+	
+	versionFlag := flag.Bool("version", false, "Show version information")
+	help := flag.Bool("help", false, "Show help information")
+	
+	flag.Parse()
+	
+	if *versionFlag {
+		fmt.Printf("gRPC Translation Server v%s\n", appVersion)
+		os.Exit(0)
+	}
+	
+	if *help {
+		printHelp()
+		os.Exit(0)
+	}
+	
+	return config
+}
+
+// printHelp displays usage information
+func printHelp() {
+	fmt.Printf(`gRPC Translation Server v%s
+
+Usage:
+  grpc-server [options]
+
+Options:
+  -address <addr>          Server address (default: 0.0.0.0)
+  -port <port>              Server port (default: 50051)
+  -max-connections <num>    Maximum concurrent connections (default: 1000)
+  -reflection               Enable gRPC reflection (default: true)
+  -metrics                  Enable metrics collection (default: true)
+  -log-level <level>        Log level: debug, info, warn, error (default: info)
+  -version                  Show version information
+  -help                     Show this help
+
+Examples:
+  grpc-server -port 50051 -address 127.0.0.1
+  grpc-server -log-level debug -metrics false
+  grpc-server -reflection -max-connections 500
+
+Features:
+  - Multi-provider translation support (OpenAI, Anthropic, SSH, etc.)
+  - Event-driven architecture with real-time progress
+  - Streaming translation progress
+  - Session management and cancellation
+  - Provider registry and status monitoring
+  - WebSocket support for web dashboards
+
+Environment Variables:
+  GRPC_ADDRESS     Server address (overrides -address)
+  GRPC_PORT        Server port (overrides -port)
+  LOG_LEVEL        Log level (overrides -log-level)
+  ENABLE_METRICS   Enable metrics (overrides -metrics)
+  ENABLE_REFLECTION Enable reflection (overrides -reflection)
+
+Services:
+  TranslationService:
+    - StartTranslation: Start new translation job
+    - GetTranslationStatus: Get translation status
+    - ListTranslations: List all sessions
+    - CancelTranslation: Cancel translation
+    - StreamTranslationProgress: Stream progress events
+    - GetProviders: Get available providers
+    - SubscribeEvents: Subscribe to system events
+
+Monitoring:
+  - Health check: Available through service calls
+  - Metrics: Available if enabled
+  - Event streaming: Real-time progress and system events
+  - Provider status: Available through GetProviders API
+
+Configuration:
+  - Server runs with default configuration for development
+  - Production deployment should set appropriate limits
+  - TLS/SSL can be configured through gRPC server options
+  - Authentication and authorization can be added through interceptors
+
+For more information, see the project documentation.
+`, appVersion)
+}
+
+// parseLogLevel converts string to logger.Level
+func parseLogLevel(level string) logger.Level {
+	switch level {
+	case "debug":
+		return logger.DEBUG
+	case "info":
+		return logger.INFO
+	case "warn":
+		return logger.WARN
+	case "error":
+		return logger.ERROR
+	default:
+		return logger.INFO
+	}
+}

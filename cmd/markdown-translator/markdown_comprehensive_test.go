@@ -24,6 +24,18 @@ func TestAdvancedFlagParsing(t *testing.T) {
 	}()
 	
 	t.Run("default flag values", func(t *testing.T) {
+		// Reset flags and define them
+		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+		flag.String("input", "", "Input file (EPUB or Markdown)")
+		outputFile := flag.String("output", "", "Output file (optional, auto-generated if not provided)")
+		outputFormat := flag.String("format", "epub", "Output format (epub, md)")
+		targetLang := flag.String("lang", "en", "Target language code (default: English)")
+		provider := flag.String("provider", "deepseek", "LLM provider (deepseek, openai, anthropic, llamacpp)")
+		model := flag.String("model", "", "LLM model (optional, uses provider default)")
+		keepMarkdown := flag.Bool("keep-md", true, "Keep intermediate markdown files")
+		enablePreparation := flag.Bool("prepare", false, "Enable preparation phase with multi-LLM analysis")
+		preparationPasses := flag.Int("prep-passes", 2, "Number of preparation analysis passes")
+		
 		// Set minimal args
 		os.Args = []string{"markdown-translator", "-input", "test.md"}
 		flag.Parse()
@@ -32,9 +44,31 @@ func TestAdvancedFlagParsing(t *testing.T) {
 		assert.NotPanics(t, func() {
 			flag.Parse()
 		})
+		
+		// Check default values
+		assert.Equal(t, "", *outputFile)
+		assert.Equal(t, "epub", *outputFormat)
+		assert.Equal(t, "en", *targetLang)
+		assert.Equal(t, "deepseek", *provider)
+		assert.Equal(t, "", *model)
+		assert.True(t, *keepMarkdown)
+		assert.False(t, *enablePreparation)
+		assert.Equal(t, 2, *preparationPasses)
 	})
 	
 	t.Run("all flags provided", func(t *testing.T) {
+		// Reset flags and define them
+		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+		inputFile := flag.String("input", "", "Input file (EPUB or Markdown)")
+		outputFile := flag.String("output", "", "Output file (optional, auto-generated if not provided)")
+		outputFormat := flag.String("format", "epub", "Output format (epub, md)")
+		targetLang := flag.String("lang", "en", "Target language code (default: English)")
+		provider := flag.String("provider", "deepseek", "LLM provider (deepseek, openai, anthropic, llamacpp)")
+		model := flag.String("model", "", "LLM model (optional, uses provider default)")
+		keepMarkdown := flag.Bool("keep-md", true, "Keep intermediate markdown files")
+		enablePreparation := flag.Bool("prepare", false, "Enable preparation phase with multi-LLM analysis")
+		preparationPasses := flag.Int("prep-passes", 2, "Number of preparation analysis passes")
+		
 		os.Args = []string{
 			"markdown-translator",
 			"-input", "input.md",
@@ -48,9 +82,17 @@ func TestAdvancedFlagParsing(t *testing.T) {
 			"-prep-passes", "3",
 		}
 		
-		assert.NotPanics(t, func() {
-			flag.Parse()
-		})
+		flag.Parse()
+		
+		assert.Equal(t, "input.md", *inputFile)
+		assert.Equal(t, "output.epub", *outputFile)
+		assert.Equal(t, "md", *outputFormat)
+		assert.Equal(t, "fr", *targetLang)
+		assert.Equal(t, "openai", *provider)
+		assert.Equal(t, "gpt-4", *model)
+		assert.False(t, *keepMarkdown)
+		assert.True(t, *enablePreparation)
+		assert.Equal(t, 3, *preparationPasses)
 	})
 }
 

@@ -95,14 +95,13 @@ func TestUniversalTranslator_TranslateBook_Basic(t *testing.T) {
 // TestUniversalTranslator_EdgeCases tests edge cases and error conditions
 func TestUniversalTranslator_EdgeCases(t *testing.T) {
 	mockTranslator := &MockTranslator{}
+	mockLLMDetector := &MockLLMDetector{}
+	mockDetector := language.NewDetector(mockLLMDetector)
 	
 	// Set up mock expectations
 	mockTranslator.On("TranslateWithProgress", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("Translated", nil)
 	
-	sourceLang := language.Language{Code: "en", Name: "English"}
 	targetLang := language.Language{Code: "ru", Name: "Russian"}
-	
-	ut := NewUniversalTranslator(mockTranslator, nil, sourceLang, targetLang)
 	
 	t.Run("TranslateBook with cancelled context", func(t *testing.T) {
 		// Skip this test temporarily due to complex mocking requirements
@@ -110,6 +109,9 @@ func TestUniversalTranslator_EdgeCases(t *testing.T) {
 	})
 	
 	t.Run("TranslateBook with metadata translation", func(t *testing.T) {
+		// Create a new translator with nil source language to trigger language detection
+		utNoSource := NewUniversalTranslator(mockTranslator, mockDetector, language.Language{}, targetLang)
+		
 		ctx := context.Background()
 		eventBus := events.NewEventBus()
 		sessionID := "test-session"
@@ -129,19 +131,24 @@ func TestUniversalTranslator_EdgeCases(t *testing.T) {
 			},
 		}
 		
-		// Mock translations
-		mockTranslator.On("Translate", ctx, "Test Book", "").Return("Тестовая Книга", nil)
-		mockTranslator.On("Translate", ctx, "Test Author", "").Return("Тестовый Автор", nil)
-		mockTranslator.On("Translate", ctx, "Chapter 1", "").Return("Глава 1", nil)
-		mockTranslator.On("Translate", ctx, "Content 1", "").Return("Содержание 1", nil)
+		// Mock language detection
+		mockLLMDetector.On("DetectLanguage", ctx, mock.AnythingOfType("string")).Return("en", nil)
 		
-		err := ut.TranslateBook(ctx, book, eventBus, sessionID)
+		// Mock translations
+		mockTranslator.On("TranslateWithProgress", ctx, "Test Book", "Book title", eventBus, sessionID).Return("Тестовая Книга", nil)
+		mockTranslator.On("TranslateWithProgress", ctx, "Chapter 1", "Chapter title", eventBus, sessionID).Return("Глава 1", nil)
+		mockTranslator.On("TranslateWithProgress", ctx, "Content 1", "Section content", eventBus, sessionID).Return("Содержание 1", nil)
+		
+		err := utNoSource.TranslateBook(ctx, book, eventBus, sessionID)
 		
 		assert.NoError(t, err)
 		mockTranslator.AssertExpectations(t)
 	})
 	
 	t.Run("TranslateBook with translation errors", func(t *testing.T) {
+		// Create a new translator with nil source language to trigger language detection
+		utNoSource := NewUniversalTranslator(mockTranslator, mockDetector, language.Language{}, targetLang)
+		
 		ctx := context.Background()
 		eventBus := events.NewEventBus()
 		sessionID := "test-session"
@@ -157,10 +164,13 @@ func TestUniversalTranslator_EdgeCases(t *testing.T) {
 			},
 		}
 		
-		// Mock translation error
-		mockTranslator.On("Translate", ctx, "Chapter 1", "").Return("", assert.AnError)
+		// Mock language detection
+		mockLLMDetector.On("DetectLanguage", ctx, mock.AnythingOfType("string")).Return("en", nil)
 		
-		err := ut.TranslateBook(ctx, book, eventBus, sessionID)
+		// Mock translation error for chapter title
+		mockTranslator.On("TranslateWithProgress", ctx, "Chapter 1", "Chapter title", eventBus, sessionID).Return("", assert.AnError)
+		
+		err := utNoSource.TranslateBook(ctx, book, eventBus, sessionID)
 		
 		assert.Error(t, err)
 		mockTranslator.AssertExpectations(t)
@@ -173,12 +183,18 @@ func TestUniversalTranslator_MultipleBooks(t *testing.T) {
 	mockLLMDetector := &MockLLMDetector{}
 	mockDetector := language.NewDetector(mockLLMDetector)
 	
-	sourceLang := language.Language{Code: "en", Name: "English"}
 	targetLang := language.Language{Code: "ru", Name: "Russian"}
 	
-	ut := NewUniversalTranslator(mockTranslator, mockDetector, sourceLang, targetLang)
-	
 	t.Run("Multiple books translation", func(t *testing.T) {
+		// Create a new translator with nil source language to trigger language detection
+		utNoSource := NewUniversalTranslator(mockTranslator, mockDetector, language.Language{}, targetLang)
+		
+		// Debug: print language detector
+		t.Logf("Language detector: %+v", utNoSource.langDetector)
+		
+		// Debug: print initial source language
+		t.Logf("Initial source language: '%s' (Code: '%s')", utNoSource.sourceLanguage, utNoSource.sourceLanguage.Code)
+		
 		ctx := context.Background()
 		eventBus := events.NewEventBus()
 		sessionID := "test-session"
@@ -201,24 +217,42 @@ func TestUniversalTranslator_MultipleBooks(t *testing.T) {
 			}
 		}
 		
+		// Debug: print book content
+		for i, book := range books {
+			sample := book.ExtractText()
+			if len(sample) > 100 {
+				t.Logf("Book %d extracted text (first 100 chars): '%s'", i, sample[:100])
+			} else {
+				t.Logf("Book %d extracted text (full): '%s'", i, sample)
+			}
+		}
+		
 		// Mock language detection for each book
 		mockLLMDetector.On("DetectLanguage", ctx, mock.AnythingOfType("string")).Return("en", nil).Times(3)
+		
+		// Add debug print
+		t.Log("Mock setup complete, starting book translation")
 		
 		// Mock translations for all books
 		for i := 0; i < 3; i++ {
 			bookTitle := "Book " + string(rune('A'+i))
-			authorName := "Author " + string(rune('A'+i))
 			content := "Content " + string(rune('A'+i))
 			
-			mockTranslator.On("Translate", ctx, bookTitle, "").Return("Книга "+string(rune('А'+i)), nil).Once()
-			mockTranslator.On("Translate", ctx, authorName, "").Return("Автор "+string(rune('А'+i)), nil).Once()
-			mockTranslator.On("Translate", ctx, "Chapter 1", "").Return("Глава 1", nil).Once()
-			mockTranslator.On("Translate", ctx, content, "").Return("Содержание "+string(rune('А'+i)), nil).Once()
+			mockTranslator.On("TranslateWithProgress", ctx, bookTitle, "Book title", mock.AnythingOfType("*events.EventBus"), mock.AnythingOfType("string")).Return("Книга "+string(rune('А'+i)), nil).Once()
+			mockTranslator.On("TranslateWithProgress", ctx, "Chapter 1", "Chapter title", mock.AnythingOfType("*events.EventBus"), mock.AnythingOfType("string")).Return("Глава 1", nil).Once()
+			mockTranslator.On("TranslateWithProgress", ctx, "Section 1", "Section title", mock.AnythingOfType("*events.EventBus"), mock.AnythingOfType("string")).Return("Раздел 1", nil).Once()
+			mockTranslator.On("TranslateWithProgress", ctx, content, "Section content", mock.AnythingOfType("*events.EventBus"), mock.AnythingOfType("string")).Return("Содержание "+string(rune('А'+i)), nil).Once()
 		}
 		
 		// Translate all books
 		for i, book := range books {
-			err := ut.TranslateBook(ctx, book, eventBus, sessionID+"-"+string(rune('0'+i)))
+			// Create a fresh translator for each book to trigger language detection each time
+			utFresh := NewUniversalTranslator(mockTranslator, mockDetector, language.Language{}, targetLang)
+			
+			// Mock language detection for this specific book
+			mockLLMDetector.On("DetectLanguage", ctx, mock.AnythingOfType("string")).Return("en", nil).Once()
+			
+			err := utFresh.TranslateBook(ctx, book, eventBus, sessionID+"-"+string(rune('0'+i)))
 			assert.NoError(t, err, "Book %d should translate successfully", i)
 			assert.Equal(t, "ru", book.Metadata.Language)
 		}
@@ -329,7 +363,7 @@ func BenchmarkUniversalTranslator_TranslateBook(b *testing.B) {
 	sessionID := "bench-session"
 	
 	// Mock translation
-	mockTranslator.On("Translate", mock.Anything, mock.Anything, mock.Anything).Return("Translated", nil)
+	mockTranslator.On("TranslateWithProgress", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("Translated", nil)
 	
 	b.ResetTimer()
 	

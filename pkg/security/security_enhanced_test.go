@@ -159,16 +159,20 @@ func TestRateLimiter_Wait(t *testing.T) {
 	
 	key := "test-user"
 	
-	// Just verify the Wait method doesn't panic
-	// The actual rate limiting behavior is difficult to test reliably in unit tests
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("Wait method panicked: %v", r)
-		}
+	// Test Wait method - should not panic
+	// We'll verify it doesn't block indefinitely by adding a timeout
+	done := make(chan bool, 1)
+	go func() {
+		rl.Wait(key)
+		done <- true
 	}()
 	
-	rl.Wait(key)
-	// If we reach here without panic, the test passes
+	select {
+	case <-done:
+		// Test passed - Wait completed
+	case <-time.After(time.Second):
+		t.Error("Wait method blocked indefinitely")
+	}
 }
 
 // TestRateLimiter_KeyManagement tests internal key management

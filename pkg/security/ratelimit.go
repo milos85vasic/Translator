@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -53,7 +54,7 @@ func (rl *RateLimiter) Wait(key string) {
 	limiter := rl.getLimiterUnsafe(key)
 	rl.mu.Unlock()
 	
-	limiter.Wait(nil)
+	limiter.Wait(context.Background())
 }
 
 // getLimiterUnsafe gets or creates a limiter for a key (caller must hold lock)

@@ -253,6 +253,28 @@ func (w *SSHWorker) DownloadFile(ctx context.Context, remotePath, localPath stri
 	return nil
 }
 
+// TransferFile uploads a file to remote worker (alias for UploadFile)
+func (w *SSHWorker) TransferFile(ctx context.Context, localPath, remotePath string) error {
+	return w.UploadFile(ctx, localPath, remotePath)
+}
+
+// TransferFileFromRemote downloads a file from remote worker (alias for DownloadFile)
+func (w *SSHWorker) TransferFileFromRemote(ctx context.Context, remotePath, localPath string) error {
+	return w.DownloadFile(ctx, remotePath, localPath)
+}
+
+// ExecuteCommandWithOutput executes a command and returns stdout as string
+func (w *SSHWorker) ExecuteCommandWithOutput(ctx context.Context, command string) (string, error) {
+	result, err := w.ExecuteCommand(ctx, command)
+	if err != nil {
+		return "", fmt.Errorf("command execution failed: %w", err)
+	}
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("command failed with exit code %d: %s", result.ExitCode, result.Stderr)
+	}
+	return result.Stdout, nil
+}
+
 // ensureConnection ensures SSH connection is established
 func (w *SSHWorker) ensureConnection() error {
 	ctx, cancel := context.WithTimeout(context.Background(), w.config.ConnectionTimeout)

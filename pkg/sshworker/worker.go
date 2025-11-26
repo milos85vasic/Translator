@@ -275,6 +275,11 @@ func (w *SSHWorker) ExecuteCommandWithOutput(ctx context.Context, command string
 	return result.Stdout, nil
 }
 
+// GetRemoteDir returns the configured remote directory
+func (w *SSHWorker) GetRemoteDir() string {
+	return w.config.RemoteDir
+}
+
 // ensureConnection ensures SSH connection is established
 func (w *SSHWorker) ensureConnection() error {
 	ctx, cancel := context.WithTimeout(context.Background(), w.config.ConnectionTimeout)

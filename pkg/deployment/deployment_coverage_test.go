@@ -510,27 +510,9 @@ services:
 	
 	// Create orchestrator
 	eventBus := events.NewEventBus()
-	logger := &APICommunicationLogger{}
-	config := &DeploymentConfig{
-		Host:        "localhost",
-		Port:        8080,
-		User:        "testuser",
-		DockerImage:  "nginx:latest",
-	}
-	plan := &DeploymentPlan{
-		Main: config,
-		Workers: []*DeploymentConfig{
-			{
-				Host:       "localhost",
-				Port:       8081,
-				User:       "testuser",
-				DockerImage: "nginx:latest",
-			},
-		},
-	}
 	
-	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
-	require.NoError(t, err)
+	cfg := &config.Config{}
+	orchestrator := NewDockerOrchestrator(cfg, eventBus)
 	
 	t.Run("Get status for existing service", func(t *testing.T) {
 		// This will fail because docker-compose is not available, but it will test the code path
@@ -548,33 +530,18 @@ services:
 }
 
 func TestDockerOrchestrator_EmitEvent(t *testing.T) {
-	// Create a temporary directory
-	tempDir := t.TempDir()
-	
 	// Create event bus to capture events
 	eventBus := events.NewEventBus()
 	var receivedEvent events.Event
 	
 	// Subscribe to events
-	eventBus.Subscribe(func(e events.Event) {
+	eventBus.Subscribe("test.event", func(e events.Event) {
 		receivedEvent = e
 	})
 	
 	// Create orchestrator
-	logger := &APICommunicationLogger{}
-	config := &DeploymentConfig{
-		Host:        "localhost",
-		Port:        8080,
-		User:        "testuser",
-		DockerImage:  "nginx:latest",
-	}
-	plan := &DeploymentPlan{
-		Main: config,
-		Workers: []*DeploymentConfig{},
-	}
-	
-	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
-	require.NoError(t, err)
+	cfg := &config.Config{}
+	orchestrator := NewDockerOrchestrator(cfg, eventBus)
 	
 	t.Run("Emit event with valid event bus", func(t *testing.T) {
 		testEvent := events.Event{
@@ -603,8 +570,8 @@ func TestDockerOrchestrator_EmitEvent(t *testing.T) {
 	
 	t.Run("Emit event with nil event bus", func(t *testing.T) {
 		// Create orchestrator with nil event bus
-		orchestratorNil, err := NewDockerOrchestrator(plan, nil, logger, tempDir)
-		require.NoError(t, err)
+		cfg := &config.Config{}
+		orchestratorNil := NewDockerOrchestrator(cfg, nil)
 		
 		testEvent := events.Event{
 			Type:      "test.event",
@@ -640,20 +607,8 @@ func TestDockerOrchestrator_Cleanup(t *testing.T) {
 	
 	// Create orchestrator
 	eventBus := events.NewEventBus()
-	logger := &APICommunicationLogger{}
-	config := &DeploymentConfig{
-		Host:        "localhost",
-		Port:        8080,
-		User:        "testuser",
-		DockerImage:  "nginx:latest",
-	}
-	plan := &DeploymentPlan{
-		Main: config,
-		Workers: []*DeploymentConfig{},
-	}
-	
-	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
-	require.NoError(t, err)
+	cfg := &config.Config{}
+	orchestrator := NewDockerOrchestrator(cfg, eventBus)
 	
 	// Verify files exist before cleanup
 	_, err = os.Stat(testFile1)
@@ -661,37 +616,22 @@ func TestDockerOrchestrator_Cleanup(t *testing.T) {
 	_, err = os.Stat(testFile2)
 	assert.NoError(t, err)
 	
-	// Call cleanup
+	// Call cleanup - this cleans up the temp compose directory, not our test temp dir
 	err = orchestrator.Cleanup()
 	assert.NoError(t, err)
 	
-	// Verify files are gone after cleanup
+	// Verify our test files are still there (cleanup should not affect our test temp dir)
 	_, err = os.Stat(testFile1)
-	assert.True(t, os.IsNotExist(err))
+	assert.NoError(t, err)
 	_, err = os.Stat(testFile2)
-	assert.True(t, os.IsNotExist(err))
+	assert.NoError(t, err)
 }
 
 func TestDockerOrchestrator_ScaleService(t *testing.T) {
-	// Create a temporary directory
-	tempDir := t.TempDir()
-	
 	// Create orchestrator
 	eventBus := events.NewEventBus()
-	logger := &APICommunicationLogger{}
-	config := &DeploymentConfig{
-		Host:        "localhost",
-		Port:        8080,
-		User:        "testuser",
-		DockerImage:  "nginx:latest",
-	}
-	plan := &DeploymentPlan{
-		Main: config,
-		Workers: []*DeploymentConfig{},
-	}
-	
-	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
-	require.NoError(t, err)
+	cfg := &config.Config{}
+	orchestrator := NewDockerOrchestrator(cfg, eventBus)
 	
 	t.Run("Scale service", func(t *testing.T) {
 		// This will fail because docker-compose is not available, but it will test the code path
@@ -702,25 +642,10 @@ func TestDockerOrchestrator_ScaleService(t *testing.T) {
 }
 
 func TestDockerOrchestrator_StopDeployment(t *testing.T) {
-	// Create a temporary directory
-	tempDir := t.TempDir()
-	
 	// Create orchestrator
 	eventBus := events.NewEventBus()
-	logger := &APICommunicationLogger{}
-	config := &DeploymentConfig{
-		Host:        "localhost",
-		Port:        8080,
-		User:        "testuser",
-		DockerImage:  "nginx:latest",
-	}
-	plan := &DeploymentPlan{
-		Main: config,
-		Workers: []*DeploymentConfig{},
-	}
-	
-	orchestrator, err := NewDockerOrchestrator(plan, eventBus, logger, tempDir)
-	require.NoError(t, err)
+	cfg := &config.Config{}
+	orchestrator := NewDockerOrchestrator(cfg, eventBus)
 	
 	t.Run("Stop deployment", func(t *testing.T) {
 		// This will fail because docker-compose is not available, but it will test the code path

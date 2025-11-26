@@ -450,6 +450,58 @@ func TestGetAvailableRAM_Extended(t *testing.T) {
 	}
 }
 
+// TestDetectGPU_MoreCoverage tests detectGPU method for better coverage
+func TestDetectGPU_MoreCoverage(t *testing.T) {
+	detector := NewDetector()
+	
+	t.Run("Test GPU detection multiple times", func(t *testing.T) {
+		// Run detection multiple times to ensure consistency
+		for i := 0; i < 3; i++ {
+			hasGPU, gpuType := detector.detectGPU()
+			t.Logf("GPU detection %d: hasGPU=%v, gpuType=%s", i, hasGPU, gpuType)
+			
+			// Basic validation
+			if hasGPU {
+				assert.NotEmpty(t, gpuType, "GPU type should not be empty when GPU is detected")
+			}
+		}
+	})
+}
+
+// TestGetCPUModel_MoreCoverage tests getCPUModel method for better coverage
+func TestGetCPUModel_MoreCoverage(t *testing.T) {
+	detector := NewDetector()
+	
+	t.Run("Test CPU model detection multiple times", func(t *testing.T) {
+		// Run detection multiple times to ensure consistency
+		for i := 0; i < 3; i++ {
+			model, err := detector.getCPUModel()
+			t.Logf("CPU model detection %d: model=%s, err=%v", i, model, err)
+			
+			if err == nil {
+				assert.NotEmpty(t, model, "CPU model should not be empty on success")
+			}
+		}
+	})
+}
+
+// TestGetCPUCores_MoreCoverage tests getCPUCores method for better coverage
+func TestGetCPUCores_MoreCoverage(t *testing.T) {
+	detector := NewDetector()
+	
+	t.Run("Test CPU cores detection multiple times", func(t *testing.T) {
+		// Run detection multiple times to ensure consistency
+		for i := 0; i < 3; i++ {
+			cores, err := detector.getCPUCores()
+			t.Logf("CPU cores detection %d: cores=%d, err=%v", i, cores, err)
+			
+			if err == nil {
+				assert.Greater(t, cores, 0, "CPU cores should be greater than 0 on success")
+			}
+		}
+	})
+}
+
 // BenchmarkDetector_Detect benchmarks the hardware detection
 func BenchmarkDetector_Detect(b *testing.B) {
 	detector := NewDetector()

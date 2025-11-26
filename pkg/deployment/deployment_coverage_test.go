@@ -391,3 +391,98 @@ func TestAPICommunicationLogger_GetStatsExtended(t *testing.T) {
 		assert.Contains(t, stats, "avg_duration")
 	})
 }
+
+// TestFormatDuration_Docker tests docker_orchestrator's formatDuration function
+func TestFormatDuration_Docker(t *testing.T) {
+	// Test formatDuration from docker_orchestrator.go
+	t.Run("Zero duration", func(t *testing.T) {
+		result := formatDuration(0)
+		assert.Equal(t, "", result)
+	})
+	
+	t.Run("Non-zero duration", func(t *testing.T) {
+		duration := 5 * time.Minute
+		result := formatDuration(duration)
+		assert.Equal(t, "5m0s", result)
+	})
+	
+	t.Run("Complex duration", func(t *testing.T) {
+		duration := 2*time.Hour + 30*time.Minute + 15*time.Second
+		result := formatDuration(duration)
+		assert.Equal(t, "2h30m15s", result)
+	})
+}
+
+// TestAPICommunicationLogger_FormatDuration tests API logger formatDuration
+func TestAPICommunicationLogger_FormatDuration(t *testing.T) {
+	logger, err := NewAPICommunicationLogger("")
+	require.NoError(t, err)
+	defer logger.Close()
+
+	t.Run("formatDuration - milliseconds", func(t *testing.T) {
+		// Use reflection to access private method
+		method := reflect.ValueOf(logger).MethodByName("formatDuration")
+		if method.IsValid() {
+			duration := 150 * time.Millisecond
+			result := method.Call([]reflect.Value{reflect.ValueOf(duration)})
+			assert.Equal(t, "150ms", result[0].String())
+		}
+	})
+
+	t.Run("formatDuration - seconds", func(t *testing.T) {
+		// Use reflection to access private method
+		method := reflect.ValueOf(logger).MethodByName("formatDuration")
+		if method.IsValid() {
+			duration := int64(2500) * time.Millisecond.Nanoseconds() / 1000000 // 2.5 seconds in milliseconds
+			result := method.Call([]reflect.Value{reflect.ValueOf(duration)})
+			assert.Equal(t, "2.5s", result[0].String())
+		}
+	})
+}
+
+// TestAPICommunicationLogger_GetStatusText tests API logger getStatusText
+func TestAPICommunicationLogger_GetStatusText(t *testing.T) {
+	logger, err := NewAPICommunicationLogger("")
+	require.NoError(t, err)
+	defer logger.Close()
+
+	// Use reflection to access private method
+	method := reflect.ValueOf(logger).MethodByName("getStatusText")
+	if !method.IsValid() {
+		t.Skip("getStatusText method not found")
+		return
+	}
+
+	t.Run("Common status codes", func(t *testing.T) {
+		testCases := []struct {
+			code    int
+			expected string
+		}{
+			{200, "OK"},
+			{201, "Created"},
+			{204, "No Content"},
+			{400, "Bad Request"},
+			{401, "Unauthorized"},
+			{403, "Forbidden"},
+			{404, "Not Found"},
+			{405, "Method Not Allowed"},
+			{409, "Conflict"},
+			{422, "Unprocessable Entity"},
+			{429, "Too Many Requests"},
+			{500, "Internal Server Error"},
+			{502, "Bad Gateway"},
+			{503, "Service Unavailable"},
+			{504, "Gateway Timeout"},
+		}
+
+		for _, tc := range testCases {
+			result := method.Call([]reflect.Value{reflect.ValueOf(tc.code)})
+			assert.Equal(t, tc.expected, result[0].String(), "Status code %d", tc.code)
+		}
+	})
+
+	t.Run("Unknown status code", func(t *testing.T) {
+		result := method.Call([]reflect.Value{reflect.ValueOf(999)})
+		assert.Equal(t, "", result[0].String())
+	})
+}

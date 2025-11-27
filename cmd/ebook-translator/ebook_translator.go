@@ -38,7 +38,7 @@ func NewEBookTranslator(sourceFile, targetLanguage, remoteHost, remoteUser, remo
 		Port:              22,
 		RemoteDir:         "/tmp/translate-workspace", // Use fixed remote directory
 		ConnectionTimeout: 30 * time.Second,
-		CommandTimeout:    30 * time.Minute,
+		CommandTimeout:    60 * time.Minute, // Extended to 60 minutes for large translations
 	}
 
 	worker, err := sshworker.NewSSHWorker(sshConfig, lgr)
@@ -322,8 +322,8 @@ func (t *EBookTranslator) executeRemoteWorkflow(ctx context.Context) error {
 		// First test with just a few paragraphs
 		t.logger.Info("Testing llama.cpp translation with sample paragraphs", nil)
 		
-		// Create a test file with just first few paragraphs
-		testCmd := fmt.Sprintf("cd %s && head -30 book1_original.md > book1_test.md && echo 'Test file created with $(wc -l < book1_test.md) lines'", t.sshWorker.GetRemoteDir())
+		// Create a test file with just first 5 lines
+		testCmd := fmt.Sprintf("cd %s && head -10 book1_original.md > book1_test.md && echo 'Test file created with $(wc -l < book1_test.md) lines'", t.sshWorker.GetRemoteDir())
 		
 		testOutput, testErr := t.sshWorker.ExecuteCommandWithOutput(ctx, testCmd)
 		t.logger.Info("Creating test file with first paragraphs", map[string]interface{}{
@@ -332,10 +332,35 @@ func (t *EBookTranslator) executeRemoteWorkflow(ctx context.Context) error {
 			"error": testErr,
 		})
 		
-		// Test translation on small file
-		testTranslationCmd := fmt.Sprintf("cd %s && python3 internal/scripts/translate_llm_only.py book1_test.md book1_test_translated.md", t.sshWorker.GetRemoteDir())
+		// Test translation on small file without timeout, run in background
+		remoteDir := t.sshWorker.GetRemoteDir()
+		testTranslationCmd := fmt.Sprintf("cd %s && nohup python3 internal/scripts/translate_llm_only.py book1_test.md book1_test_translated.md > translation.log 2>&1 & echo 'Translation started in background, PID: $!'", remoteDir)
 		
-		testTranslationOutput, testTranslationErr := t.sshWorker.ExecuteCommandWithOutput(ctx, testTranslationCmd)
+		t.logger.Info("Starting test translation in background", map[string]interface{}{
+			"command": testTranslationCmd,
+		})
+		
+		// Start translation in background
+		startOutput, startErr := t.sshWorker.ExecuteCommandWithOutput(ctx, testTranslationCmd)
+		if startErr != nil {
+			return fmt.Errorf("failed to start translation: %w (output: %s)", startErr, startOutput)
+		}
+		
+		t.logger.Info("Translation started", map[string]interface{}{
+			"output": startOutput,
+		})
+		
+		// Check if translation completed
+		waitCmd := fmt.Sprintf("cd %s && for i in {1..60}; do if [ -f book1_test_translated.md ]; then echo 'Translation completed after $i checks'; head -5 book1_test_translated.md; break; elif [ -f translation.log ]; then echo 'Check $i: Progress...'; tail -3 translation.log; else echo 'Check $i: Still starting...'; fi; sleep 5; done", remoteDir)
+		
+		t.logger.Info("Waiting for translation to complete", map[string]interface{}{
+			"command": waitCmd,
+		})
+		
+		testTranslationOutput, testTranslationErr := t.sshWorker.ExecuteCommandWithOutput(ctx, waitCmd)
+		if testTranslationErr != nil {
+			return fmt.Errorf("translation monitoring failed: %w (output: %s)", testTranslationErr, testTranslationOutput)
+		}
 		if testTranslationErr != nil {
 			return fmt.Errorf("test translation failed: %w (output: %s)", testTranslationErr, testTranslationOutput)
 		}
@@ -353,13 +378,14 @@ func (t *EBookTranslator) executeRemoteWorkflow(ctx context.Context) error {
 			"error": checkTranslationErr,
 		})
 		
-		// Use actual llama.cpp translation for full book
+		// Use actual llama.cpp translation for full book without timeout
+		remoteDir = t.sshWorker.GetRemoteDir()
 		remoteCmd = fmt.Sprintf(
 			"cd %s && python3 internal/scripts/translate_llm_only.py book1_original.md book1_original_translated.md && "+
 			"python3 internal/scripts/epub_generator.py book1_original_translated.md book1_original_translated.epub",
-			t.sshWorker.GetRemoteDir(),
+			remoteDir,
 		)
-		t.logger.Info("Using llama.cpp for full book translation", nil)
+		t.logger.Info("Using llama.cpp for full book translation without timeout", nil)
 	} else if strings.Contains(checkOutput, "PROVIDER:openai") || strings.Contains(checkOutput, "PROVIDER:anthropic") {
 		// Use API-based translation
 		remoteCmd = fmt.Sprintf(

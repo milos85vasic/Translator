@@ -44,6 +44,72 @@ func TestPerformance_ConnectionPool(t *testing.T) {
 		}
 	})
 	
+	t.Run("GetConnectionWithExistingConnection", func(t *testing.T) {
+		config := DefaultPerformanceConfig()
+		security := DefaultSecurityConfig()
+		auditor := NewSecurityAuditor(false, &MockSecurityLogger{})
+		
+		pool := NewConnectionPool(config, security, auditor)
+		
+		workerConfig := NewWorkerConfig("worker1", "Test Worker", "127.0.0.1", "testuser")
+		
+		// Add a connection to pool
+		key := pool.getConnectionKey("worker1")
+		entry := &ConnectionPoolEntry{
+			Connection: &SSHConnection{Config: workerConfig},
+			LastUsed:   time.Now(),
+			CreatedAt:  time.Now(),
+			InUse:      false,
+		}
+		pool.connections[key] = entry
+		
+		// Get existing connection
+		conn, err := pool.GetConnection("worker1", workerConfig)
+		if err != nil {
+			t.Errorf("Unexpected error getting existing connection: %v", err)
+		}
+		if conn == nil {
+			t.Error("Expected non-nil connection")
+		}
+		
+		// Verify connection is marked as in use
+		if !entry.InUse {
+			t.Error("Expected connection to be marked as in use")
+		}
+	})
+	
+	t.Run("GetConnectionWithStaleConnection", func(t *testing.T) {
+		config := DefaultPerformanceConfig()
+		security := DefaultSecurityConfig()
+		auditor := NewSecurityAuditor(false, &MockSecurityLogger{})
+		
+		pool := NewConnectionPool(config, security, auditor)
+		
+		workerConfig := NewWorkerConfig("worker1", "Test Worker", "127.0.0.1", "testuser")
+		
+		// Add a stale connection to pool (created too long ago)
+		key := pool.getConnectionKey("worker1")
+		entry := &ConnectionPoolEntry{
+			Connection: &SSHConnection{Config: workerConfig},
+			LastUsed:   time.Now().Add(-time.Hour), // Last used an hour ago
+			CreatedAt:  time.Now().Add(-2 * time.Hour), // Created 2 hours ago
+			InUse:      false,
+		}
+		pool.connections[key] = entry
+		
+		// Try to get stale connection (should remove and create new)
+		_, err := pool.GetConnection("worker1", workerConfig)
+		// Should try to create new connection (which will fail)
+		if err == nil {
+			t.Error("Expected error creating new connection for stale connection")
+		}
+		
+		// Verify stale connection was removed
+		if _, exists := pool.connections[key]; exists {
+			t.Error("Expected stale connection to be removed")
+		}
+	})
+	
 	t.Run("ReturnConnection", func(t *testing.T) {
 		config := DefaultPerformanceConfig()
 		security := DefaultSecurityConfig()

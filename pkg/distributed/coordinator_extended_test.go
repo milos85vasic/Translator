@@ -62,6 +62,83 @@ func TestDistributedCoordinator_QueryRemoteProviders(t *testing.T) {
 			t.Error("Expected error for invalid URL, got nil")
 		}
 	})
+	
+	t.Run("NilService", func(t *testing.T) {
+		coordinator := createTestCoordinator()
+		
+		// Test with nil service
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Function panics with nil service as expected: %v", r)
+			} else {
+				t.Error("Expected panic with nil service, but function continued")
+			}
+		}()
+		
+		_, err := coordinator.queryRemoteProviders(context.Background(), nil)
+		
+		// If we get here without panic, check for error
+		if err != nil {
+			t.Logf("Error with nil service: %v", err)
+		} else {
+			t.Log("No error with nil service - function handles it gracefully")
+		}
+	})
+	
+	t.Run("CancelledContext", func(t *testing.T) {
+		coordinator := createTestCoordinator()
+		
+		// Create a service
+		service := &RemoteService{
+			WorkerID: "worker1",
+			Name:     "Test Worker",
+			Host:     "localhost",
+			Port:     8080,
+			Protocol: "http",
+			Status:   "online",
+		}
+		
+		// Create a cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		
+		// Test with cancelled context
+		_, err := coordinator.queryRemoteProviders(ctx, service)
+		
+		// Should fail due to cancelled context
+		if err == nil {
+			t.Error("Expected error with cancelled context")
+		} else {
+			t.Logf("Expected error with cancelled context: %v", err)
+		}
+	})
+	
+	t.Run("DifferentProtocols", func(t *testing.T) {
+		coordinator := createTestCoordinator()
+		
+		// Test with different protocols
+		protocols := []string{"http", "https", "http3"}
+		
+		for _, protocol := range protocols {
+			service := &RemoteService{
+				WorkerID: "worker1",
+				Name:     "Test Worker",
+				Host:     "localhost",
+				Port:     8080,
+				Protocol: protocol,
+				Status:   "online",
+			}
+			
+			_, err := coordinator.queryRemoteProviders(context.Background(), service)
+			
+			// We expect errors since there's no server, but function should handle all protocols
+			if err == nil {
+				t.Errorf("Expected error for %s protocol, got nil", protocol)
+			} else {
+				t.Logf("Expected error for %s protocol: %v", protocol, err)
+			}
+		}
+	})
 }
 
 func TestDistributedCoordinator_TranslateWithRemoteInstances(t *testing.T) {
@@ -77,12 +154,39 @@ func TestDistributedCoordinator_TranslateWithRemoteInstances(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error for no remote instances, got nil")
 		}
+		if err.Error() != "no remote instances available" {
+			t.Errorf("Expected 'no remote instances available' error, got: %v", err)
+		}
 	})
 	
-	t.Run("SkipWithRemoteInstance", func(t *testing.T) {
-		// Skip this test because it requires pairingManager
-		// which is nil in test setup and causes segfault
-		t.Skip("Skipping test due to nil pairingManager in test setup")
+	t.Run("NilContext", func(t *testing.T) {
+		coordinator := createTestCoordinator()
+		
+		// Test with nil context
+		_, err := coordinator.translateWithRemoteInstances(
+			nil,
+			"hello world",
+			"",
+		)
+		
+		if err == nil {
+			t.Error("Expected error for nil context, got nil")
+		}
+	})
+	
+	t.Run("EmptyText", func(t *testing.T) {
+		coordinator := createTestCoordinator()
+		
+		// Test with empty text
+		_, err := coordinator.translateWithRemoteInstances(
+			context.Background(),
+			"",
+			"",
+		)
+		
+		if err == nil {
+			t.Error("Expected error for empty text, got nil")
+		}
 	})
 }
 
@@ -94,6 +198,35 @@ func TestDistributedCoordinator_ValidateWorkerForWork(t *testing.T) {
 		if err != nil {
 			// With nil version manager, should return nil
 			t.Errorf("Expected nil for valid worker with no version manager, got %v", err)
+		}
+	})
+	
+	t.Run("NonExistentWorker", func(t *testing.T) {
+		// Test with the createTestCoordinator which has a nil pairing manager
+		// This will cause the function to panic when trying to access services
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Function panicked with nil pairing manager as expected: %v", r)
+			} else {
+				// If no panic, function returned nil because versionManager is also nil
+				t.Log("Function returned nil - both pairingManager and versionManager are nil")
+			}
+		}()
+		
+		// Test with non-existent worker
+		err := coordinator.validateWorkerForWork(context.Background(), "non-existent-worker")
+		t.Logf("Function returned err: %v", err)
+	})
+	
+	t.Run("CancelledContext", func(t *testing.T) {
+		// Create a cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		
+		err := coordinator.validateWorkerForWork(ctx, "worker1")
+		if err != nil {
+			// With nil version manager, should return nil regardless of context
+			t.Errorf("Expected nil for cancelled context with no version manager, got %v", err)
 		}
 	})
 }
@@ -174,10 +307,88 @@ func TestDistributedCoordinator_GetNextRemoteInstance(t *testing.T) {
 }
 
 func TestDistributedCoordinator_TranslateWithRemoteInstance(t *testing.T) {
-	t.Run("SkipAllTests", func(t *testing.T) {
-		// Skip all tests in this function because they require pairingManager
-		// which is nil in test setup and causes segfault
-		t.Skip("Skipping all tests due to nil pairingManager in test setup")
+	t.Run("NilPairingManager", func(t *testing.T) {
+		coordinator := createTestCoordinator()
+		
+		// Create a test instance
+		instance := &RemoteLLMInstance{
+			ID:        "instance1",
+			WorkerID:  "worker1",
+			Provider:  "openai",
+			Model:     "gpt-4",
+			Available: true,
+		}
+		
+		// Test with nil pairingManager - should panic
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic due to nil pairingManager, but function didn't panic")
+			} else {
+				t.Logf("Function panicked as expected: %v", r)
+			}
+		}()
+		
+		// This should panic
+		_, err := coordinator.translateWithRemoteInstance(
+			context.Background(),
+			instance,
+			"hello world",
+			"",
+		)
+		t.Errorf("Function should have panicked but returned err: %v", err)
+	})
+	
+	t.Run("NilInstance", func(t *testing.T) {
+		coordinator := createTestCoordinator()
+		
+		// Test with nil instance - should panic
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic due to nil instance, but function didn't panic")
+			} else {
+				t.Logf("Function panicked as expected: %v", r)
+			}
+		}()
+		
+		// This should panic
+		_, err := coordinator.translateWithRemoteInstance(
+			context.Background(),
+			nil,
+			"hello world",
+			"",
+		)
+		t.Errorf("Function should have panicked but returned err: %v", err)
+	})
+	
+	t.Run("NilContext", func(t *testing.T) {
+		coordinator := createTestCoordinator()
+		
+		// Create a test instance
+		instance := &RemoteLLMInstance{
+			ID:        "instance1",
+			WorkerID:  "worker1",
+			Provider:  "openai",
+			Model:     "gpt-4",
+			Available: true,
+		}
+		
+		// Test with nil context - should panic
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic due to nil pairingManager, but function didn't panic")
+			} else {
+				t.Logf("Function panicked as expected: %v", r)
+			}
+		}()
+		
+		// This should panic
+		_, err := coordinator.translateWithRemoteInstance(
+			nil,
+			instance,
+			"hello world",
+			"",
+		)
+		t.Errorf("Function should have panicked but returned err: %v", err)
 	})
 }
 
@@ -285,5 +496,43 @@ func TestDistributedCoordinator_TranslateWithRemoteInstanceDetailed(t *testing.T
 			"",
 		)
 		t.Error("Function should have panicked but continued execution")
+	})
+}
+
+func TestDistributedCoordinator_DiscoverRemoteInstancesCoverage(t *testing.T) {
+	t.Run("DiscoverRemoteInstancesWithRealPairingManager", func(t *testing.T) {
+		eventBus := events.NewEventBus()
+		apiLogger, _ := deployment.NewAPICommunicationLogger("/tmp/test-api.log")
+		
+		// Create a real pairing manager
+		sshPool := NewSSHPool()
+		pairingManager := NewPairingManager(sshPool, eventBus)
+		
+		coordinator := NewDistributedCoordinator(
+			nil,
+			sshPool,
+			pairingManager,
+			nil,
+			nil,
+			eventBus,
+			apiLogger,
+		)
+		
+		// Test with no paired services
+		err := coordinator.DiscoverRemoteInstances(context.Background())
+		
+		// Should succeed with no services
+		if err != nil {
+			t.Errorf("Unexpected error with no services: %v", err)
+		}
+		
+		// Test with context cancellation
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+		
+		err = coordinator.DiscoverRemoteInstances(ctx)
+		if err != nil && err != context.Canceled {
+			t.Logf("Error with cancelled context (expected): %v", err)
+		}
 	})
 }

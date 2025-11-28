@@ -134,3 +134,73 @@ func TestDistributedCoordinator(t *testing.T) {
 		}
 	})
 }
+
+func TestDistributedCoordinator_getNextRemoteInstance(t *testing.T) {
+	t.Run("getNextRemoteInstance_Empty", func(t *testing.T) {
+		eventBus := events.NewEventBus()
+		apiLogger, _ := deployment.NewAPICommunicationLogger("/tmp/test-api.log")
+		
+		coordinator := NewDistributedCoordinator(
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			eventBus,
+			apiLogger,
+		)
+		
+		// With no instances, should return nil
+		instance := coordinator.getNextRemoteInstance()
+		if instance != nil {
+			t.Error("Expected nil when no remote instances")
+		}
+	})
+}
+
+func TestDistributedCoordinator_validateWorkerForWork(t *testing.T) {
+	t.Run("validateWorkerForWork_NilVersionManager", func(t *testing.T) {
+		eventBus := events.NewEventBus()
+		apiLogger, _ := deployment.NewAPICommunicationLogger("/tmp/test-api.log")
+		pairingManager := NewPairingManager(nil, eventBus)
+		
+		coordinator := NewDistributedCoordinator(
+			nil, // localCoordinator
+			nil, // sshPool
+			pairingManager,
+			nil, // fallbackManager
+			nil, // versionManager
+			eventBus,
+			apiLogger,
+		)
+		
+		// When version manager is nil, should skip validation
+		err := coordinator.validateWorkerForWork(context.Background(), "worker1")
+		if err != nil {
+			t.Errorf("Expected no error when version manager is nil (skips validation), got %v", err)
+		}
+	})
+	
+	t.Run("validateWorkerForWork_WorkerNotFound", func(t *testing.T) {
+		eventBus := events.NewEventBus()
+		apiLogger, _ := deployment.NewAPICommunicationLogger("/tmp/test-api.log")
+		pairingManager := NewPairingManager(nil, eventBus)
+		versionManager := NewVersionManager(eventBus)
+		
+		coordinator := NewDistributedCoordinator(
+			nil, // localCoordinator
+			nil, // sshPool
+			pairingManager,
+			nil, // fallbackManager
+			versionManager,
+			eventBus,
+			apiLogger,
+		)
+		
+		// Should return error for non-existent worker
+		err := coordinator.validateWorkerForWork(context.Background(), "nonexistent-worker")
+		if err == nil {
+			t.Error("Expected error for non-existent worker")
+		}
+	})
+}

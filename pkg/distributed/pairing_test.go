@@ -1,8 +1,10 @@
 package distributed
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -364,6 +366,133 @@ func TestTestSSHClient(t *testing.T) {
 		// Disconnect should not error even when not connected
 		err = client.Disconnect()
 		assert.NoError(t, err)
+	})
+}
+
+// TestPairingManagerPairWithService tests the PairWithService function
+func TestPairingManagerPairWithService(t *testing.T) {
+	t.Run("PairWithService_NonExistentWorker", func(t *testing.T) {
+		sshPool := NewSSHPool()
+		eventBus := events.NewEventBus()
+		pm := NewPairingManager(sshPool, eventBus)
+		
+		// Try to pair with a non-existent worker
+		err := pm.PairWithService("non-existent-worker")
+		
+		// Should return error
+		if err == nil {
+			t.Error("Expected error when pairing with non-existent worker")
+		}
+		expectedError := "service non-existent-worker not discovered"
+		if err.Error() != expectedError {
+			t.Errorf("Expected error '%s', got '%s'", expectedError, err.Error())
+		}
+	})
+	
+	t.Run("PairWithService_DiscoveredWorker", func(t *testing.T) {
+		sshPool := NewSSHPool()
+		eventBus := events.NewEventBus()
+		pm := NewPairingManager(sshPool, eventBus)
+		
+		// Add a discovered service
+		service := &RemoteService{
+			WorkerID: "test-worker",
+			Name:     "Test Worker",
+			Status:   "discovered",
+		}
+		pm.services["test-worker"] = service
+		
+		// Pair with the discovered worker
+		err := pm.PairWithService("test-worker")
+		
+		// Should not error
+		if err != nil {
+			t.Errorf("Unexpected error when pairing with discovered worker: %v", err)
+		}
+		
+		// Check that status changed to "paired"
+		if service.Status != "paired" {
+			t.Errorf("Expected status 'paired', got '%s'", service.Status)
+		}
+		
+		// Check that PairedAt is set
+		if service.PairedAt == nil {
+			t.Error("Expected PairedAt to be set")
+		}
+	})
+}
+
+// TestPairingManagerUnpairService tests the UnpairService function
+func TestPairingManagerUnpairService(t *testing.T) {
+	t.Run("UnpairService_NonExistentWorker", func(t *testing.T) {
+		sshPool := NewSSHPool()
+		eventBus := events.NewEventBus()
+		pm := NewPairingManager(sshPool, eventBus)
+		
+		// Try to unpair a non-existent worker
+		err := pm.UnpairService("non-existent-worker")
+		
+		// Should return error
+		if err == nil {
+			t.Error("Expected error when unpairing non-existent worker")
+		}
+		expectedError := "service non-existent-worker not found"
+		if err.Error() != expectedError {
+			t.Errorf("Expected error '%s', got '%s'", expectedError, err.Error())
+		}
+	})
+	
+	t.Run("UnpairService_PairedWorker", func(t *testing.T) {
+		sshPool := NewSSHPool()
+		eventBus := events.NewEventBus()
+		pm := NewPairingManager(sshPool, eventBus)
+		
+		// Add a paired service
+		service := &RemoteService{
+			WorkerID: "test-worker",
+			Name:     "Test Worker",
+			Status:   "paired",
+		}
+		pm.services["test-worker"] = service
+		
+		// Unpair the worker
+		err := pm.UnpairService("test-worker")
+		
+		// Should not error
+		if err != nil {
+			t.Errorf("Unexpected error when unpairing worker: %v", err)
+		}
+		
+		// Check that status changed to "online"
+		if service.Status != "online" {
+			t.Errorf("Expected status 'online', got '%s'", service.Status)
+		}
+		
+		// Check that PairedAt is nil
+		if service.PairedAt != nil {
+			t.Error("Expected PairedAt to be nil")
+		}
+	})
+}
+
+// TestPairingManagerDiscoverService tests the DiscoverService function
+func TestPairingManagerDiscoverService(t *testing.T) {
+	t.Run("DiscoverService_NonExistentWorker", func(t *testing.T) {
+		sshPool := NewSSHPool()
+		eventBus := events.NewEventBus()
+		pm := NewPairingManager(sshPool, eventBus)
+		
+		// Try to discover a non-existent worker
+		_, err := pm.DiscoverService(context.Background(), "non-existent-worker")
+		
+		// Should return error
+		if err == nil {
+			t.Error("Expected error when discovering non-existent worker")
+		}
+		// Should contain error message about SSH connection
+		if !strings.Contains(err.Error(), "SSH connection") {
+			t.Errorf("Expected SSH connection error, got: %v", err)
+		}
 	})
 }
 
